@@ -3,8 +3,6 @@ import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import LoginScreen from "../screens/LoginScreen";
 import TabNavigator from "./TabNavigator";
 import AspectRatioModal from "../screens/AspectRatioModal";
-import ModelSelectorModal from "../screens/ModelSelectorModal";
-import VideoModelSelectorModal from "../screens/VideoModelSelectorModal";
 
 export type RootStackParamList = {
   Login: undefined;
@@ -12,14 +10,6 @@ export type RootStackParamList = {
   AspectRatioModal: {
     onSelect: (ratio: string) => void;
     currentRatio: string;
-  };
-  ModelSelector: {
-    onSelectModel: (model: string) => void;
-    currentModel: string;
-  };
-  VideoModelSelector: {
-    onSelectModel: (model: string) => void;
-    currentModel: string;
   };
 };
 
@@ -37,10 +27,6 @@ export default function RootNavigator() {
       <Stack.Screen name="Main" component={TabNavigator} />
       <Stack.Group screenOptions={{ presentation: "transparentModal" }}>
         <Stack.Screen name="AspectRatioModal" component={AspectRatioModal} />
-      </Stack.Group>
-      <Stack.Group screenOptions={{ presentation: "modal" }}>
-        <Stack.Screen name="ModelSelector" component={ModelSelectorModal} />
-        <Stack.Screen name="VideoModelSelector" component={VideoModelSelectorModal} />
       </Stack.Group>
     </Stack.Navigator>
   );

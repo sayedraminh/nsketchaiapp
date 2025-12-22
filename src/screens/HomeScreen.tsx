@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useRef, useCallback } from "react";
 import { View, Text, Pressable, ScrollView, TextInput, TouchableWithoutFeedback, Keyboard, Image, ActionSheetIOS, Platform, Modal } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
@@ -10,6 +10,10 @@ import type { RootStackParamList } from "../navigation/RootNavigator";
 import Animated, { useAnimatedScrollHandler, useSharedValue, useAnimatedStyle, interpolate } from "react-native-reanimated";
 import * as ImagePicker from "expo-image-picker";
 import { MenuView } from "@react-native-menu/menu";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
+import { BottomSheetModal } from "@gorhom/bottom-sheet";
+import ModelSelectorSheet from "../components/ModelSelectorSheet";
+import VideoModelSelectorSheet from "../components/VideoModelSelectorSheet";
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
@@ -22,7 +26,18 @@ export default function HomeScreen() {
   const [numberOfImages, setNumberOfImages] = useState(1);
   const [selectedModel, setSelectedModel] = useState("Nano Banana");
   const [selectedVideoModel, setSelectedVideoModel] = useState("Kandinsky 5");
+  const [showAdvancedOptions, setShowAdvancedOptions] = useState(false);
   const scrollY = useSharedValue(0);
+  const modelSheetRef = useRef<BottomSheetModal>(null);
+  const videoModelSheetRef = useRef<BottomSheetModal>(null);
+
+  const handleOpenModelSheet = useCallback(() => {
+    if (selectedMode === "Image") {
+      modelSheetRef.current?.present();
+    } else {
+      videoModelSheetRef.current?.present();
+    }
+  }, [selectedMode]);
 
   const scrollHandler = useAnimatedScrollHandler({
     onScroll: (event) => {
@@ -153,8 +168,8 @@ export default function HomeScreen() {
 
   const tools = [
     { id: "all", icon: "apps", label: "All tools", gradient: ["#a855f7", "#6366f1", "#3b82f6"] },
-    { id: "image", icon: "image", label: "Image", gradient: ["#06b6d4", "#3b82f6", "#6366f1"] },
-    { id: "video", icon: "videocam", label: "Video", gradient: ["#f59e0b", "#fb923c", "#f97316"] },
+    { id: "image", icon: "image", label: "Image", gradient: ["#06b6d4", "#3b82f6", "#6366f1"], customImage: require("../../assets/imgnewgrad.png") },
+    { id: "video", icon: "videocam", label: "Video", gradient: ["#f59e0b", "#fb923c", "#f97316"], customImage: require("../../assets/vidnewgrad.png") },
     { id: "edit", icon: "color-wand", label: "Edit", gradient: ["#a855f7", "#d946ef", "#ec4899"] },
     { id: "enhance", icon: "sparkles", label: "Enhance", gradient: ["#6b7280", "#9ca3af", "#d1d5db"] },
   ];
@@ -233,6 +248,7 @@ export default function HomeScreen() {
   });
 
   return (
+    <GestureHandlerRootView style={{ flex: 1 }}>
     <View className="flex-1 bg-black">
       <SafeAreaView className="flex-1" edges={["top"]}>
         {/* Blurred Header with Animated Opacity */}
@@ -243,33 +259,24 @@ export default function HomeScreen() {
               style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0 }}
             />
             <SafeAreaView edges={["top"]}>
-              <View className="px-5 py-4 flex-row items-center justify-between">
+              <View className="px-5 py-2 flex-row items-center justify-between">
                 <Pressable className="active:opacity-70">
                   <Ionicons name="menu" size={28} color="#fff" />
                 </Pressable>
-                <Pressable
-                  onPress={() => {
-                    if (selectedMode === "Image") {
-                      navigation.navigate("ModelSelector", {
-                        currentModel: selectedModel,
-                        onSelectModel: setSelectedModel,
-                      });
-                    } else {
-                      navigation.navigate("VideoModelSelector", {
-                        currentModel: selectedVideoModel,
-                        onSelectModel: setSelectedVideoModel,
-                      });
-                    }
-                  }}
-                  className="flex-row items-center rounded-full px-4 py-2 active:opacity-70"
-                  style={{ backgroundColor: "#2a2a2a" }}
-                >
-                  <Text className="text-white text-base mr-1">{selectedMode === "Image" ? selectedModel : selectedVideoModel}</Text>
-                  <Ionicons name="chevron-down" size={16} color="#fff" />
-                </Pressable>
-                <Pressable className="active:opacity-70">
-                  <View className="w-10 h-10 rounded-full bg-gradient-to-br from-amber-200 to-gray-400" style={{ backgroundColor: "#d4d4d8" }} />
-                </Pressable>
+                <View className="flex-row items-center">
+                  <View className="flex-row items-center mr-3">
+                    <Text className="text-white text-base font-semibold">5</Text>
+                    <Ionicons name="flash" size={18} color="#facc15" style={{ marginLeft: 2 }} />
+                  </View>
+                  <Pressable className="active:opacity-70">
+                    <LinearGradient
+                      colors={["#60a5fa", "#c4b5fd", "#fcd34d"]}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 1 }}
+                      style={{ width: 36, height: 36, borderRadius: 18 }}
+                    />
+                  </Pressable>
+                </View>
               </View>
             </SafeAreaView>
           </BlurView>
@@ -278,33 +285,24 @@ export default function HomeScreen() {
         {/* Static Header (always visible) */}
         <View style={{ position: "absolute", top: 0, left: 0, right: 0, zIndex: 9 }}>
           <SafeAreaView edges={["top"]}>
-            <View className="px-5 py-4 flex-row items-center justify-between">
+            <View className="px-5 py-2 flex-row items-center justify-between">
               <Pressable className="active:opacity-70">
                 <Ionicons name="menu" size={28} color="#fff" />
               </Pressable>
-              <Pressable
-                onPress={() => {
-                  if (selectedMode === "Image") {
-                    navigation.navigate("ModelSelector", {
-                      currentModel: selectedModel,
-                      onSelectModel: setSelectedModel,
-                    });
-                  } else {
-                    navigation.navigate("VideoModelSelector", {
-                      currentModel: selectedVideoModel,
-                      onSelectModel: setSelectedVideoModel,
-                    });
-                  }
-                }}
-                className="flex-row items-center rounded-full px-4 py-2 active:opacity-70"
-                style={{ backgroundColor: "#2a2a2a" }}
-              >
-                <Text className="text-white text-base mr-1">{selectedMode === "Image" ? selectedModel : selectedVideoModel}</Text>
-                <Ionicons name="chevron-down" size={16} color="#fff" />
-              </Pressable>
-              <Pressable className="active:opacity-70">
-                <View className="w-10 h-10 rounded-full bg-gradient-to-br from-amber-200 to-gray-400" style={{ backgroundColor: "#d4d4d8" }} />
-              </Pressable>
+              <View className="flex-row items-center">
+                <View className="flex-row items-center mr-3">
+                  <Text className="text-white text-base font-semibold">5</Text>
+                  <Ionicons name="flash" size={18} color="#facc15" style={{ marginLeft: 2 }} />
+                </View>
+                <Pressable className="active:opacity-70">
+                  <LinearGradient
+                    colors={["#60a5fa", "#c4b5fd", "#fcd34d"]}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={{ width: 36, height: 36, borderRadius: 18 }}
+                  />
+                </Pressable>
+              </View>
             </View>
           </SafeAreaView>
         </View>
@@ -314,7 +312,7 @@ export default function HomeScreen() {
             className="flex-1"
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
-            contentContainerStyle={{ paddingTop: 90 }}
+            contentContainerStyle={{ paddingTop: 120 }}
             onScroll={scrollHandler}
             scrollEventThrottle={16}
           >
@@ -322,7 +320,7 @@ export default function HomeScreen() {
             {/* Main Content */}
             <View className="px-5">
               {/* Main Heading */}
-              <Text className="text-white text-xl font-bold mb-4 text-center">
+              <Text className="text-white text-xl font-bold mb-8 text-center">
                 What do you want to create today?
               </Text>
 
@@ -339,8 +337,8 @@ export default function HomeScreen() {
                 />
 
                 {/* Options Row */}
-                <View className="flex-row items-center justify-between">
-                  <View className="flex-row items-center">
+                <View className="flex-row items-center">
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} className="flex-1" contentContainerStyle={{ paddingRight: 8 }}>
                     <MenuView
                       onPressAction={handleMenuAction}
                       actions={[
@@ -359,35 +357,64 @@ export default function HomeScreen() {
                       ]}
                     >
                       <Pressable
-                        className="flex-row items-center rounded-full px-3 py-2 mr-2 active:opacity-70"
-                        style={{ backgroundColor: "#2a2a2a", borderWidth: 1.5, borderColor: "#3a3a3a" }}
+                        className="flex-row items-center rounded-full px-2.5 mr-2 active:opacity-70"
+                        style={{ backgroundColor: "#2a2a2a", height: 28 }}
                       >
-                        <Ionicons name={selectedMode === "Image" ? "image-outline" : "videocam-outline"} size={18} color="#fff" />
-                        <Text className="text-white text-sm ml-2">{selectedMode}</Text>
+                        <Ionicons name={selectedMode === "Image" ? "image-outline" : "videocam-outline"} size={14} color="#fff" />
+                        <Text className="text-white text-xs ml-1.5">{selectedMode}</Text>
                       </Pressable>
                     </MenuView>
+                    <Pressable
+                      onPress={handleOpenModelSheet}
+                      className="flex-row items-center rounded-full px-2.5 mr-2 active:opacity-70"
+                      style={{ backgroundColor: "#2a2a2a", height: 28 }}
+                    >
+                      <Text className="text-white text-xs mr-1">{selectedMode === "Image" ? selectedModel : selectedVideoModel}</Text>
+                      <Ionicons name="chevron-down" size={12} color="#fff" />
+                    </Pressable>
                     <MenuView
                       title="Select Aspect Ratio"
                       onPressAction={handleAspectRatioAction}
                       actions={aspectRatioActions}
                     >
                       <Pressable
-                        className="flex-row items-center rounded-full px-3 py-2 mr-2 active:opacity-70"
-                        style={{ backgroundColor: "#2a2a2a", borderWidth: 1.5, borderColor: "#3a3a3a" }}
+                        className="flex-row items-center rounded-full px-2.5 mr-2 active:opacity-70"
+                        style={{ backgroundColor: "#2a2a2a", height: 28 }}
                       >
                         <View
                           style={{
-                            width: getAspectRatioDimensions(selectedAspectRatio).width,
-                            height: getAspectRatioDimensions(selectedAspectRatio).height,
+                            width: 10,
+                            height: 12,
                             borderWidth: 1.5,
                             borderColor: "#fff",
-                            borderRadius: 3,
-                            marginRight: 6,
+                            borderRadius: 2,
+                            marginRight: 5,
                           }}
                         />
-                        <Text className="text-white text-sm">{selectedAspectRatio}</Text>
+                        <Text className="text-white text-xs">{selectedAspectRatio}</Text>
                       </Pressable>
                     </MenuView>
+                    <Pressable 
+                      onPress={() => setShowAdvancedOptions(!showAdvancedOptions)}
+                      className="rounded-full p-1.5 mr-2 active:opacity-70" 
+                      style={{ backgroundColor: showAdvancedOptions ? "#3a3a3a" : "#2d2d2d" }}
+                    >
+                      <Ionicons name="options-outline" size={16} color="#fff" />
+                    </Pressable>
+                  </ScrollView>
+                  <View className="flex-row items-center pl-2">
+                    <Pressable className="rounded-full p-1.5 mr-2 active:opacity-70" style={{ backgroundColor: "#2d2d2d" }}>
+                      <Ionicons name="add" size={18} color="#fff" />
+                    </Pressable>
+                    <Pressable className="rounded-full p-1.5 active:opacity-70" style={{ backgroundColor: "#2d2d2d" }}>
+                      <Ionicons name="sparkles-outline" size={16} color="#fff" />
+                    </Pressable>
+                  </View>
+                </View>
+
+                {/* Advanced Options Row */}
+                {showAdvancedOptions && (
+                  <View className="flex-row items-center mt-4">
                     {selectedMode === "Image" && (
                       <MenuView
                         title="Number of Images"
@@ -395,41 +422,42 @@ export default function HomeScreen() {
                         actions={imageCountActions}
                       >
                         <Pressable
-                          className="flex-row items-center rounded-full px-3 py-2 active:opacity-70"
-                          style={{ backgroundColor: "#2a2a2a", borderWidth: 1.5, borderColor: "#3a3a3a" }}
+                          className="flex-row items-center rounded-full px-2.5 py-1.5 mr-2 active:opacity-70"
+                          style={{ backgroundColor: "#2a2a2a" }}
                         >
-                          <Text className="text-white text-sm font-semibold">{numberOfImages}x</Text>
+                          <Ionicons name="copy-outline" size={14} color="#fff" />
+                          <Text className="text-white text-xs ml-1.5">{numberOfImages}x</Text>
                         </Pressable>
                       </MenuView>
                     )}
                   </View>
-                  <View className="flex-row items-center">
-                    <Pressable className="rounded-full p-2 mr-2 active:opacity-70" style={{ backgroundColor: "#2d2d2d", borderWidth: 1, borderColor: "#3a3a3a" }}>
-                      <Ionicons name="add" size={22} color="#fff" />
-                    </Pressable>
-                    <Pressable className="rounded-full p-2 active:opacity-70" style={{ backgroundColor: "#2d2d2d", borderWidth: 1, borderColor: "#3a3a3a" }}>
-                      <Ionicons name="sparkles-outline" size={18} color="#fff" />
-                    </Pressable>
-                  </View>
-                </View>
+                )}
               </View>
 
               {/* Tool Categories */}
-              <View className="flex-row justify-between mb-8">
+              <View className="flex-row justify-between mb-6 mt-2">
                 {tools.map((tool) => (
                   <Pressable
                     key={tool.id}
                     className="items-center active:opacity-70"
-                    style={{ width: 70 }}
+                    style={{ width: 60 }}
                   >
-                    <LinearGradient
-                      colors={tool.gradient as any}
-                      start={{ x: 0, y: 0 }}
-                      end={{ x: 1, y: 1 }}
-                      style={{ width: 64, height: 64, borderRadius: 20, alignItems: "center", justifyContent: "center", marginBottom: 8 }}
-                    >
-                      <Ionicons name={tool.icon as any} size={28} color="#fff" />
-                    </LinearGradient>
+                    {tool.customImage ? (
+                      <Image
+                        source={tool.customImage}
+                        style={{ width: 52, height: 52, borderRadius: 16, marginBottom: 6 }}
+                        resizeMode="cover"
+                      />
+                    ) : (
+                      <LinearGradient
+                        colors={tool.gradient as any}
+                        start={{ x: 0, y: 0 }}
+                        end={{ x: 1, y: 1 }}
+                        style={{ width: 52, height: 52, borderRadius: 16, alignItems: "center", justifyContent: "center", marginBottom: 6 }}
+                      >
+                        <Ionicons name={tool.icon as any} size={24} color="#fff" />
+                      </LinearGradient>
+                    )}
                     <Text className="text-white text-xs text-center">{tool.label}</Text>
                   </Pressable>
                 ))}
@@ -529,6 +557,11 @@ export default function HomeScreen() {
           </Pressable>
         </Pressable>
       </Modal>
+
+      {/* Model Selector Bottom Sheet */}
+      <ModelSelectorSheet ref={modelSheetRef} onSelectModel={setSelectedModel} />
+      <VideoModelSelectorSheet ref={videoModelSheetRef} onSelectModel={setSelectedVideoModel} />
     </View>
+    </GestureHandlerRootView>
   );
 }
