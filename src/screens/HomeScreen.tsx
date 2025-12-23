@@ -323,13 +323,13 @@ export default function HomeScreen() {
               </Text>
 
               {/* Prompt Input Box */}
-              <View className="rounded-3xl p-5 mb-6" style={{ backgroundColor: "#1e1e1e" }}>
+              <View className="rounded-3xl py-5 px-3 mb-6" style={{ backgroundColor: "#1e1e1e" }}>
                 <TextInput
                   value={prompt}
                   onChangeText={setPrompt}
                   placeholder="Describe what you want to create"
                   placeholderTextColor="#6b7280"
-                  className="text-white text-base mb-5 min-h-[32px]"
+                  className="text-white text-base mb-5 min-h-[32px] px-2"
                   multiline
                   returnKeyType="default"
                 />
@@ -395,17 +395,17 @@ export default function HomeScreen() {
                     <Pressable 
                       onPress={() => setShowAdvancedOptions(!showAdvancedOptions)}
                       className="rounded-full p-1.5 mr-2 active:opacity-70" 
-                      style={{ backgroundColor: showAdvancedOptions ? "#3a3a3a" : "#2d2d2d" }}
+                      style={{ backgroundColor: showAdvancedOptions ? "#fff" : "#2d2d2d" }}
                     >
-                      <Ionicons name="options-outline" size={16} color="#fff" />
+                      <Ionicons name="options-outline" size={16} color={showAdvancedOptions ? "#000" : "#fff"} />
                     </Pressable>
                   </ScrollView>
-                  <View className="flex-row items-center pl-2">
-                    <Pressable className="rounded-full p-1.5 mr-2 active:opacity-70" style={{ backgroundColor: "#2d2d2d" }}>
-                      <Ionicons name="add" size={18} color="#fff" />
+                  <View className="flex-row items-center pl-2" style={{ marginTop: showAdvancedOptions ? 8 : 0 }}>
+                    <Pressable className="rounded-full p-2 mr-2 active:opacity-70" style={{ backgroundColor: "#3a3a3a" }}>
+                      <Ionicons name="add" size={20} color="#fff" />
                     </Pressable>
-                    <Pressable className="rounded-full p-1.5 active:opacity-70" style={{ backgroundColor: "#2d2d2d" }}>
-                      <Ionicons name="sparkles-outline" size={16} color="#fff" />
+                    <Pressable className="rounded-full p-2 active:opacity-70" style={{ backgroundColor: "#3a3a3a" }}>
+                      <Ionicons name="sparkles-outline" size={18} color="#fff" />
                     </Pressable>
                   </View>
                 </View>
