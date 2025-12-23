@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, forwardRef } from "react";
+import React, { useCallback, useMemo, forwardRef, useRef } from "react";
 import { View, Text, Pressable, Image, useWindowDimensions } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { BottomSheetModal, BottomSheetFlatList, BottomSheetBackdrop } from "@gorhom/bottom-sheet";
@@ -38,9 +38,20 @@ interface Props {
 }
 
 const ModelSelectorSheet = forwardRef<BottomSheetModal, Props>(({ onSelectModel }, ref) => {
+  const internalRef = useRef<BottomSheetModal>(null);
   const insets = useSafeAreaInsets();
   const { height } = useWindowDimensions();
   const snapPoints = useMemo(() => [height * 1 - insets.top], [height, insets.top]);
+
+  // Sync internal ref with forwarded ref
+  const setRef = useCallback((instance: BottomSheetModal | null) => {
+    internalRef.current = instance;
+    if (typeof ref === 'function') {
+      ref(instance);
+    } else if (ref) {
+      ref.current = instance;
+    }
+  }, [ref]);
 
   const renderBackdrop = useCallback(
     (props: any) => (
@@ -51,8 +62,8 @@ const ModelSelectorSheet = forwardRef<BottomSheetModal, Props>(({ onSelectModel 
 
   const handleSelectModel = useCallback((modelName: string) => {
     onSelectModel(modelName);
-    (ref as React.RefObject<BottomSheetModal>)?.current?.dismiss();
-  }, [onSelectModel, ref]);
+    internalRef.current?.dismiss();
+  }, [onSelectModel]);
 
   const renderItem = useCallback(({ item }: { item: ModelItem }) => (
     <Pressable
@@ -105,7 +116,7 @@ const ModelSelectorSheet = forwardRef<BottomSheetModal, Props>(({ onSelectModel 
 
   return (
     <BottomSheetModal
-      ref={ref}
+      ref={setRef}
       snapPoints={snapPoints}
       enableDynamicSizing={false}
       enablePanDownToClose

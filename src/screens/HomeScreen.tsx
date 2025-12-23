@@ -10,7 +10,6 @@ import type { RootStackParamList } from "../navigation/RootNavigator";
 import Animated, { useAnimatedScrollHandler, useSharedValue, useAnimatedStyle, interpolate } from "react-native-reanimated";
 import * as ImagePicker from "expo-image-picker";
 import { MenuView } from "@react-native-menu/menu";
-import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { BottomSheetModal } from "@gorhom/bottom-sheet";
 import ModelSelectorSheet from "../components/ModelSelectorSheet";
 import VideoModelSelectorSheet from "../components/VideoModelSelectorSheet";
@@ -248,7 +247,6 @@ export default function HomeScreen() {
   });
 
   return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
     <View className="flex-1 bg-black">
       <SafeAreaView className="flex-1" edges={["top"]}>
         {/* Blurred Header with Animated Opacity */}
@@ -562,6 +560,5 @@ export default function HomeScreen() {
       <ModelSelectorSheet ref={modelSheetRef} onSelectModel={setSelectedModel} />
       <VideoModelSelectorSheet ref={videoModelSheetRef} onSelectModel={setSelectedVideoModel} />
     </View>
-    </GestureHandlerRootView>
   );
 }
