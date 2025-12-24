@@ -1,5 +1,5 @@
 import React, { useState, useRef, useCallback } from "react";
-import { View, Text, Pressable, ScrollView, TextInput, TouchableWithoutFeedback, Keyboard, Image, ActionSheetIOS, Platform, Modal } from "react-native";
+import { View, Text, Pressable, ScrollView, TextInput, TouchableWithoutFeedback, Keyboard, Image, ActionSheetIOS, Platform, Modal, LayoutAnimation, UIManager } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
@@ -7,7 +7,7 @@ import { BlurView } from "expo-blur";
 import { useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { RootStackParamList } from "../navigation/RootNavigator";
-import Animated, { useAnimatedScrollHandler, useSharedValue, useAnimatedStyle, interpolate } from "react-native-reanimated";
+import Animated, { useAnimatedScrollHandler, useSharedValue, useAnimatedStyle, interpolate, withTiming, Easing } from "react-native-reanimated";
 import * as ImagePicker from "expo-image-picker";
 import { MenuView } from "@react-native-menu/menu";
 import { BottomSheetModal } from "@gorhom/bottom-sheet";
@@ -15,6 +15,11 @@ import ModelSelectorSheet from "../components/ModelSelectorSheet";
 import VideoModelSelectorSheet from "../components/VideoModelSelectorSheet";
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
+
+// Enable LayoutAnimation on Android
+if (Platform.OS === "android" && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
 
 export default function HomeScreen() {
   const navigation = useNavigation<NavigationProp>();
@@ -26,6 +31,28 @@ export default function HomeScreen() {
   const [selectedModel, setSelectedModel] = useState("Nano Banana");
   const [selectedVideoModel, setSelectedVideoModel] = useState("Kandinsky 5");
   const [showAdvancedOptions, setShowAdvancedOptions] = useState(false);
+
+  const advancedOptionsProgress = useSharedValue(0);
+  
+  const toggleAdvancedOptions = useCallback(() => {
+    const newValue = !showAdvancedOptions;
+    advancedOptionsProgress.value = withTiming(newValue ? 1 : 0, {
+      duration: 300,
+      easing: Easing.out(Easing.cubic),
+    });
+    setShowAdvancedOptions(newValue);
+  }, [showAdvancedOptions]);
+
+  const advancedOptionsStyle = useAnimatedStyle(() => ({
+    opacity: advancedOptionsProgress.value,
+    height: advancedOptionsProgress.value * 36,
+    overflow: 'hidden' as const,
+  }));
+
+  const actionButtonsStyle = useAnimatedStyle(() => ({
+    marginTop: advancedOptionsProgress.value * 8,
+  }));
+
   const scrollY = useSharedValue(0);
   const modelSheetRef = useRef<BottomSheetModal>(null);
   const videoModelSheetRef = useRef<BottomSheetModal>(null);
@@ -112,6 +139,29 @@ export default function HomeScreen() {
       setSelectedMode("Video");
     }
   };
+
+  const handleImageSourceAction = async (event: { nativeEvent: { event: string } }) => {
+    const action = event.nativeEvent.event;
+    if (action === "gallery") {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: false,
+        quality: 1,
+      });
+      if (!result.canceled) {
+        // Handle selected image
+        console.log("Selected image from gallery:", result.assets[0].uri);
+      }
+    } else if (action === "assets") {
+      // Navigate to assets screen or show assets picker
+      console.log("Open assets");
+    }
+  };
+
+  const imageSourceActions = [
+    { id: "gallery", title: "Phone Gallery", image: "photo.on.rectangle", imageColor: "#ffffff" },
+    { id: "assets", title: "Assets", image: "folder", imageColor: "#ffffff" },
+  ];
 
   const imageCountActions = [1, 2, 3, 4].map((count) => ({
     id: count.toString(),
@@ -323,7 +373,7 @@ export default function HomeScreen() {
               </Text>
 
               {/* Prompt Input Box */}
-              <View className="rounded-3xl py-5 px-3 mb-6" style={{ backgroundColor: "#1e1e1e" }}>
+              <View className="rounded-3xl pt-5 pb-2 px-3 mb-4" style={{ backgroundColor: "#1e1e1e" }}>
                 <TextInput
                   value={prompt}
                   onChangeText={setPrompt}
@@ -393,43 +443,54 @@ export default function HomeScreen() {
                       </Pressable>
                     </MenuView>
                     <Pressable 
-                      onPress={() => setShowAdvancedOptions(!showAdvancedOptions)}
+                      onPress={toggleAdvancedOptions}
                       className="rounded-full p-1.5 mr-2 active:opacity-70" 
                       style={{ backgroundColor: showAdvancedOptions ? "#fff" : "#2d2d2d" }}
                     >
                       <Ionicons name="options-outline" size={16} color={showAdvancedOptions ? "#000" : "#fff"} />
                     </Pressable>
                   </ScrollView>
-                  <View className="flex-row items-center pl-2" style={{ marginTop: showAdvancedOptions ? 8 : 0 }}>
-                    <Pressable className="rounded-full p-2 mr-2 active:opacity-70" style={{ backgroundColor: "#3a3a3a" }}>
-                      <Ionicons name="add" size={20} color="#fff" />
-                    </Pressable>
+                  <Animated.View style={[{ flexDirection: 'row', alignItems: 'center', paddingLeft: 8 }, actionButtonsStyle]}>
+                    <MenuView
+                      title="Select Image Source"
+                      onPressAction={handleImageSourceAction}
+                      actions={imageSourceActions}
+                    >
+                      <Pressable className="rounded-full p-2 mr-2 active:opacity-70" style={{ backgroundColor: "#3a3a3a" }}>
+                        <Ionicons name="add" size={20} color="#fff" />
+                      </Pressable>
+                    </MenuView>
                     <Pressable className="rounded-full p-2 active:opacity-70" style={{ backgroundColor: "#3a3a3a" }}>
                       <Ionicons name="sparkles-outline" size={18} color="#fff" />
                     </Pressable>
-                  </View>
+                  </Animated.View>
                 </View>
 
                 {/* Advanced Options Row */}
-                {showAdvancedOptions && (
-                  <View className="flex-row items-center mt-4">
-                    {selectedMode === "Image" && (
-                      <MenuView
-                        title="Number of Images"
-                        onPressAction={handleImageCountAction}
-                        actions={imageCountActions}
+                <Animated.View style={[{ flexDirection: 'row', alignItems: 'center' }, advancedOptionsStyle]}>
+                  {selectedMode === "Image" && (
+                    <MenuView
+                      title="Number of Images"
+                      onPressAction={handleImageCountAction}
+                      actions={imageCountActions}
+                    >
+                      <Pressable
+                        className="flex-row items-center rounded-full px-2.5 py-1.5 mr-2 active:opacity-70"
+                        style={{ backgroundColor: "#2a2a2a" }}
                       >
-                        <Pressable
-                          className="flex-row items-center rounded-full px-2.5 py-1.5 mr-2 active:opacity-70"
-                          style={{ backgroundColor: "#2a2a2a" }}
-                        >
-                          <Ionicons name="copy-outline" size={14} color="#fff" />
-                          <Text className="text-white text-xs ml-1.5">{numberOfImages}x</Text>
-                        </Pressable>
-                      </MenuView>
-                    )}
-                  </View>
-                )}
+                        <Ionicons name="copy-outline" size={14} color="#fff" />
+                        <Text className="text-white text-xs ml-1.5">{numberOfImages}x</Text>
+                      </Pressable>
+                    </MenuView>
+                  )}
+                  <Pressable
+                    className="flex-row items-center rounded-full px-2.5 py-1.5 mr-2 active:opacity-70"
+                    style={{ backgroundColor: "#2a2a2a" }}
+                  >
+                    <Ionicons name="hardware-chip-outline" size={14} color="#fff" />
+                    <Text className="text-white text-xs ml-1.5">Enhance prompt</Text>
+                  </Pressable>
+                </Animated.View>
               </View>
 
               {/* Tool Categories */}
