@@ -1,21 +1,16 @@
 # Convex Integration
 
-This folder is a placeholder for the Convex generated files.
+This folder contains only the **generated files** from the shared Convex deployment.
+
+> ⚠️ **Important**: The Convex backend functions (mutations, queries) are managed in the **web repository**. The mobile app only consumes the API - it does NOT define backend logic.
 
 ## Setup Instructions
 
-### Option 1: Get generated files from web/backend dev
+1. Get the `convex/_generated/` folder from the web/backend team
+2. Copy those files into this `convex/_generated/` directory
+3. Set `EXPO_PUBLIC_CONVEX_URL` in your `.env` to the same deployment URL used by web
 
-The backend/web developer should provide you with the `convex/_generated` folder from the shared Convex project. Copy those files here.
-
-### Option 2: Generate files yourself
-
-1. Make sure you have the `EXPO_PUBLIC_CONVEX_URL` set in your `.env` file
-2. Run:
-   ```bash
-   npx convex dev
-   ```
-3. This will generate the `_generated` folder with the actual API types
+The web team generates these files when they run `npx convex dev` or `npx convex deploy`.
 
 ## What to expect
 
