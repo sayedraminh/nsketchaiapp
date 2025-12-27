@@ -1,20 +1,23 @@
 import React, { useState, useRef, useCallback } from "react";
-import { View, Text, Pressable, ScrollView, TextInput, TouchableWithoutFeedback, Keyboard, Image, ActionSheetIOS, Platform, Modal, LayoutAnimation, UIManager } from "react-native";
+import { View, Text, Pressable, ScrollView, TextInput, TouchableWithoutFeedback, Keyboard, Image, ActionSheetIOS, Platform, Modal, LayoutAnimation, UIManager, Animated as RNAnimated } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { BlurView } from "expo-blur";
 import { useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
-import type { RootStackParamList } from "../navigation/RootNavigator";
+import type { AppStackParamList } from "../navigation/AppNavigator";
 import Animated, { useAnimatedScrollHandler, useSharedValue, useAnimatedStyle, interpolate, withTiming, Easing } from "react-native-reanimated";
 import * as ImagePicker from "expo-image-picker";
 import { MenuView } from "@react-native-menu/menu";
 import { BottomSheetModal } from "@gorhom/bottom-sheet";
 import ModelSelectorSheet from "../components/ModelSelectorSheet";
 import VideoModelSelectorSheet from "../components/VideoModelSelectorSheet";
+import SessionsDrawer, { SessionsDrawerRef } from "../components/SessionsDrawer";
+import { useUser } from "@clerk/clerk-expo";
+import { useCredits } from "../hooks/useCredits";
 
-type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
+type NavigationProp = NativeStackNavigationProp<AppStackParamList>;
 
 // Enable LayoutAnimation on Android
 if (Platform.OS === "android" && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -23,6 +26,9 @@ if (Platform.OS === "android" && UIManager.setLayoutAnimationEnabledExperimental
 
 export default function HomeScreen() {
   const navigation = useNavigation<NavigationProp>();
+  const { user } = useUser();
+  const { credits, isLoading: creditsLoading } = useCredits();
+  const drawerRef = useRef<SessionsDrawerRef>(null);
   const [prompt, setPrompt] = useState("");
   const [selectedAspectRatio, setSelectedAspectRatio] = useState("2:3");
   const [selectedMode, setSelectedMode] = useState<"Image" | "Video">("Image");
@@ -297,7 +303,8 @@ export default function HomeScreen() {
   });
 
   return (
-    <View className="flex-1 bg-black">
+    <SessionsDrawer ref={drawerRef}>
+      <View className="flex-1 bg-black">
       <SafeAreaView className="flex-1" edges={["top"]}>
         {/* Blurred Header with Animated Opacity */}
         <Animated.View style={[{ position: "absolute", top: 0, left: 0, right: 0, zIndex: 10 }, headerAnimatedStyle]}>
@@ -308,21 +315,28 @@ export default function HomeScreen() {
             />
             <SafeAreaView edges={["top"]}>
               <View className="px-5 py-2 flex-row items-center justify-between">
-                <Pressable className="active:opacity-70">
+                <Pressable className="active:opacity-70" onPress={() => drawerRef.current?.openDrawer()}>
                   <Ionicons name="menu" size={28} color="#fff" />
                 </Pressable>
                 <View className="flex-row items-center">
                   <View className="flex-row items-center mr-3">
-                    <Text className="text-white text-base font-semibold">5</Text>
+                    <Text className="text-white text-base font-semibold">{creditsLoading ? "..." : credits.toLocaleString()}</Text>
                     <Ionicons name="flash" size={18} color="#facc15" style={{ marginLeft: 2 }} />
                   </View>
-                  <Pressable className="active:opacity-70">
-                    <LinearGradient
-                      colors={["#60a5fa", "#c4b5fd", "#fcd34d"]}
-                      start={{ x: 0, y: 0 }}
-                      end={{ x: 1, y: 1 }}
-                      style={{ width: 36, height: 36, borderRadius: 18 }}
-                    />
+                  <Pressable className="active:opacity-70" onPress={() => navigation.navigate("Settings")}>
+                    {user?.imageUrl ? (
+                      <Image
+                        source={{ uri: user.imageUrl }}
+                        style={{ width: 36, height: 36, borderRadius: 18 }}
+                      />
+                    ) : (
+                      <LinearGradient
+                        colors={["#60a5fa", "#c4b5fd", "#fcd34d"]}
+                        start={{ x: 0, y: 0 }}
+                        end={{ x: 1, y: 1 }}
+                        style={{ width: 36, height: 36, borderRadius: 18 }}
+                      />
+                    )}
                   </Pressable>
                 </View>
               </View>
@@ -334,21 +348,28 @@ export default function HomeScreen() {
         <View style={{ position: "absolute", top: 0, left: 0, right: 0, zIndex: 9 }}>
           <SafeAreaView edges={["top"]}>
             <View className="px-5 py-2 flex-row items-center justify-between">
-              <Pressable className="active:opacity-70">
+              <Pressable className="active:opacity-70" onPress={() => drawerRef.current?.openDrawer()}>
                 <Ionicons name="menu" size={28} color="#fff" />
               </Pressable>
               <View className="flex-row items-center">
                 <View className="flex-row items-center mr-3">
-                  <Text className="text-white text-base font-semibold">5</Text>
+                  <Text className="text-white text-base font-semibold">{creditsLoading ? "..." : credits.toLocaleString()}</Text>
                   <Ionicons name="flash" size={18} color="#facc15" style={{ marginLeft: 2 }} />
                 </View>
-                <Pressable className="active:opacity-70">
-                  <LinearGradient
-                    colors={["#60a5fa", "#c4b5fd", "#fcd34d"]}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 1 }}
-                    style={{ width: 36, height: 36, borderRadius: 18 }}
-                  />
+                <Pressable className="active:opacity-70" onPress={() => navigation.navigate("Settings")}>
+                  {user?.imageUrl ? (
+                    <Image
+                      source={{ uri: user.imageUrl }}
+                      style={{ width: 36, height: 36, borderRadius: 18 }}
+                    />
+                  ) : (
+                    <LinearGradient
+                      colors={["#60a5fa", "#c4b5fd", "#fcd34d"]}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 1 }}
+                      style={{ width: 36, height: 36, borderRadius: 18 }}
+                    />
+                  )}
                 </Pressable>
               </View>
             </View>
@@ -378,9 +399,12 @@ export default function HomeScreen() {
                   value={prompt}
                   onChangeText={setPrompt}
                   placeholder="Describe what you want to create"
-                  placeholderTextColor="#6b7280"
+                  placeholderTextColor="#9ca3af"
                   className="text-white text-base mb-5 min-h-[32px] px-2"
+                  style={{ maxHeight: 100 }}
                   multiline
+                  maxLength={4000}
+                  numberOfLines={6}
                   returnKeyType="default"
                 />
 
@@ -406,7 +430,7 @@ export default function HomeScreen() {
                     >
                       <Pressable
                         className="flex-row items-center rounded-full px-2.5 mr-2 active:opacity-70"
-                        style={{ backgroundColor: "#2a2a2a", height: 28 }}
+                        style={{ backgroundColor: "#3a3a3a", height: 28 }}
                       >
                         <Ionicons name={selectedMode === "Image" ? "image-outline" : "videocam-outline"} size={14} color="#fff" />
                         <Text className="text-white text-xs ml-1.5">{selectedMode}</Text>
@@ -415,7 +439,7 @@ export default function HomeScreen() {
                     <Pressable
                       onPress={handleOpenModelSheet}
                       className="flex-row items-center rounded-full px-2.5 mr-2 active:opacity-70"
-                      style={{ backgroundColor: "#2a2a2a", height: 28 }}
+                      style={{ backgroundColor: "#3a3a3a", height: 28 }}
                     >
                       <Text className="text-white text-xs mr-1">{selectedMode === "Image" ? selectedModel : selectedVideoModel}</Text>
                       <Ionicons name="chevron-down" size={12} color="#fff" />
@@ -427,7 +451,7 @@ export default function HomeScreen() {
                     >
                       <Pressable
                         className="flex-row items-center rounded-full px-2.5 mr-2 active:opacity-70"
-                        style={{ backgroundColor: "#2a2a2a", height: 28 }}
+                        style={{ backgroundColor: "#3a3a3a", height: 28 }}
                       >
                         <View
                           style={{
@@ -476,7 +500,7 @@ export default function HomeScreen() {
                     >
                       <Pressable
                         className="flex-row items-center rounded-full px-2.5 py-1.5 mr-2 active:opacity-70"
-                        style={{ backgroundColor: "#2a2a2a" }}
+                        style={{ backgroundColor: "#3a3a3a" }}
                       >
                         <Ionicons name="copy-outline" size={14} color="#fff" />
                         <Text className="text-white text-xs ml-1.5">{numberOfImages}x</Text>
@@ -485,7 +509,7 @@ export default function HomeScreen() {
                   )}
                   <Pressable
                     className="flex-row items-center rounded-full px-2.5 py-1.5 mr-2 active:opacity-70"
-                    style={{ backgroundColor: "#2a2a2a" }}
+                    style={{ backgroundColor: "#3a3a3a" }}
                   >
                     <Ionicons name="hardware-chip-outline" size={14} color="#fff" />
                     <Text className="text-white text-xs ml-1.5">Enhance prompt</Text>
@@ -586,7 +610,7 @@ export default function HomeScreen() {
                 <Pressable
                   onPress={handleTakePhoto}
                   className="flex-row items-center rounded-2xl p-4 mb-3 active:opacity-70"
-                  style={{ backgroundColor: "#2a2a2a" }}
+                  style={{ backgroundColor: "#3a3a3a" }}
                 >
                   <View
                     className="w-12 h-12 rounded-full items-center justify-center mr-4"
@@ -601,7 +625,7 @@ export default function HomeScreen() {
                 <Pressable
                   onPress={handleChooseFromLibrary}
                   className="flex-row items-center rounded-2xl p-4 active:opacity-70"
-                  style={{ backgroundColor: "#2a2a2a" }}
+                  style={{ backgroundColor: "#3a3a3a" }}
                 >
                   <View
                     className="w-12 h-12 rounded-full items-center justify-center mr-4"
@@ -620,6 +644,7 @@ export default function HomeScreen() {
       {/* Model Selector Bottom Sheet */}
       <ModelSelectorSheet ref={modelSheetRef} onSelectModel={setSelectedModel} />
       <VideoModelSelectorSheet ref={videoModelSheetRef} onSelectModel={setSelectedVideoModel} />
-    </View>
+      </View>
+    </SessionsDrawer>
   );
 }
