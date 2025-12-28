@@ -23,6 +23,7 @@ export default function TabNavigator() {
       tabBarStyle={{
         backgroundColor: "#000000",
       }}
+      translucent={false}
       screenOptions={{
         ...(Platform.OS === "ios" && {
           tabBarActiveTintColor: "#FFFFFF",
