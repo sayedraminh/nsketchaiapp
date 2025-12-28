@@ -1,29 +1,45 @@
 import React, { useState, useRef, useCallback, useEffect } from "react";
-import { View, Text, Pressable, ScrollView, TextInput, Platform, UIManager, Image, Keyboard, Dimensions, ActivityIndicator, Alert, ToastAndroid } from "react-native";
+import { View, Text, Pressable, ScrollView, TextInput, Platform, UIManager, Keyboard, Dimensions, ActivityIndicator, Alert, ToastAndroid } from "react-native";
+import { Image } from "expo-image";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
+import MaskedView from "@react-native-masked-view/masked-view";
 import { BlurView } from "expo-blur";
 import { MenuView } from "@react-native-menu/menu";
 import { BottomSheetModal } from "@gorhom/bottom-sheet";
-import Animated, { useSharedValue, useAnimatedStyle, withTiming, Easing, useAnimatedScrollHandler, interpolate } from "react-native-reanimated";
-import * as ImagePicker from "expo-image-picker";
+import Animated, { useSharedValue, useAnimatedStyle, withTiming, withRepeat, Easing, useAnimatedScrollHandler, interpolate, FadeIn } from "react-native-reanimated";
 import * as Clipboard from "expo-clipboard";
 import ModelSelectorSheet from "../components/ModelSelectorSheet";
 import GeneratedImageSheet from "../components/GeneratedImageSheet";
 import SessionsDrawer, { SessionsDrawerRef } from "../components/SessionsDrawer";
-import { useRoute, RouteProp, useFocusEffect } from "@react-navigation/native";
-import { Animated as RNAnimated } from "react-native";
+import { useRoute, RouteProp } from "@react-navigation/native";
 import { TabParamList } from "../navigation/TabNavigator";
 import { useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import { Id } from "../../convex/_generated/dataModel";
 import { useCredits } from "../hooks/useCredits";
-import { useUser } from "@clerk/clerk-expo";
+import { useUser, useAuth } from "@clerk/clerk-expo";
+import { useImageGeneration } from "../hooks/useImageGeneration";
+import {
+  ImageModelId,
+  AspectRatio,
+  Resolution,
+  Quality,
+  getModelById,
+  getModelAspectRatios,
+  modelRequiresAttachment,
+  modelSupportsResolution,
+  modelSupportsQuality,
+  calculateImageCost,
+  DEFAULT_SETTINGS,
+} from "../config/imageModels";
+import { pickImages, uploadAttachments, SelectedImage } from "../lib/attachments";
+import { AutoSkeletonView } from "react-native-auto-skeleton";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
-const IMAGE_WIDTH = SCREEN_WIDTH - 40;
-const MULTI_IMAGE_WIDTH = SCREEN_WIDTH * 0.7;
+const IMAGE_WIDTH = SCREEN_WIDTH - 80; // Smaller width for better fit
+const MULTI_IMAGE_WIDTH = SCREEN_WIDTH * 0.55;
 
 // Enable LayoutAnimation on Android
 if (Platform.OS === "android" && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -31,6 +47,76 @@ if (Platform.OS === "android" && UIManager.setLayoutAnimationEnabledExperimental
 }
 
 type ImagesScreenRouteProp = RouteProp<TabParamList, "Images">;
+
+// Spinning icon component for loading state
+function SpinningIcon() {
+  const rotation = useSharedValue(0);
+  
+  useEffect(() => {
+    rotation.value = withRepeat(
+      withTiming(360, { duration: 1000, easing: Easing.linear }),
+      -1, // infinite
+      false
+    );
+  }, []);
+  
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [{ rotate: `${rotation.value}deg` }],
+  }));
+  
+  return (
+    <Animated.View style={animatedStyle}>
+      <Ionicons name="sync" size={24} color="#a855f7" />
+    </Animated.View>
+  );
+}
+
+// Shimmer text component - wave effect sweeping left to right
+function ShimmerText({ text }: { text: string }) {
+  const translateX = useSharedValue(-100);
+  
+  useEffect(() => {
+    translateX.value = withRepeat(
+      withTiming(100, { duration: 1500, easing: Easing.linear }),
+      -1,
+      false
+    );
+  }, []);
+  
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: translateX.value }],
+  }));
+  
+  return (
+    <MaskedView
+      style={{ marginLeft: 8 }}
+      maskElement={
+        <Text style={{ fontSize: 14, fontWeight: '400' }}>{text}</Text>
+      }
+    >
+      <Text style={{ fontSize: 14, color: '#6b7280' }}>{text}</Text>
+      <Animated.View 
+        style={[
+          { 
+            position: 'absolute', 
+            top: 0, 
+            left: 0, 
+            right: 0, 
+            bottom: 0,
+          },
+          animatedStyle
+        ]}
+      >
+        <LinearGradient
+          colors={['transparent', '#ffffff', 'transparent']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 0 }}
+          style={{ flex: 1, width: 80 }}
+        />
+      </Animated.View>
+    </MaskedView>
+  );
+}
 
 function formatTime(timestamp: number): string {
   const date = new Date(timestamp);
@@ -42,20 +128,53 @@ function formatTime(timestamp: number): string {
   return `${formattedHours}:${formattedMinutes}${ampm}`;
 }
 
+// Parse aspect ratio string (e.g., "2:3") to numeric value (width/height)
+function parseAspectRatio(ratio?: string): number {
+  if (!ratio) return 1;
+  const parts = ratio.split(":");
+  if (parts.length !== 2) return 1;
+  const w = parseFloat(parts[0]);
+  const h = parseFloat(parts[1]);
+  if (isNaN(w) || isNaN(h) || h === 0) return 1;
+  return w / h;
+}
+
 export default function ImagesScreen() {
   const route = useRoute<ImagesScreenRouteProp>();
   const { user } = useUser();
+  const { getToken } = useAuth();
   const { credits, isLoading: creditsLoading } = useCredits();
   const insets = useSafeAreaInsets();
+  
+  // Image generation hook
+  const {
+    status: generationStatus,
+    error: generationError,
+    progress: generationProgress,
+    isGenerating,
+    settings,
+    updateSettings,
+    generate,
+    cancel: cancelGeneration,
+    reset: resetGeneration,
+  } = useImageGeneration();
   
   // Track current session - use local state so we can clear it
   const [currentSessionId, setCurrentSessionId] = useState<string | undefined>(undefined);
   const [currentSessionTitle, setCurrentSessionTitle] = useState<string | undefined>(undefined);
   
+  // Generation input state
   const [prompt, setPrompt] = useState("");
-  const [selectedAspectRatio, setSelectedAspectRatio] = useState("2:3");
-  const [numberOfImages, setNumberOfImages] = useState(1);
-  const [selectedModel, setSelectedModel] = useState("Nano Banana");
+  const [selectedModelId, setSelectedModelId] = useState<ImageModelId>(DEFAULT_SETTINGS.modelId);
+  const [selectedModelLabel, setSelectedModelLabel] = useState("Nano Banana");
+  const [selectedAspectRatio, setSelectedAspectRatio] = useState<AspectRatio>(DEFAULT_SETTINGS.aspectRatio);
+  const [numberOfImages, setNumberOfImages] = useState(DEFAULT_SETTINGS.numImages);
+  const [selectedResolution, setSelectedResolution] = useState<Resolution>(DEFAULT_SETTINGS.resolution);
+  const [selectedQuality, setSelectedQuality] = useState<Quality>(DEFAULT_SETTINGS.quality);
+  const [attachments, setAttachments] = useState<SelectedImage[]>([]);
+  const [isUploadingAttachments, setIsUploadingAttachments] = useState(false);
+  
+  // UI state
   const [showAdvancedOptions, setShowAdvancedOptions] = useState(false);
   const drawerRef = useRef<SessionsDrawerRef>(null);
   const modelSheetRef = useRef<BottomSheetModal>(null);
@@ -69,6 +188,14 @@ export default function ImagesScreen() {
   } | null>(null);
   const translateY = useSharedValue(0);
   const scrollY = useSharedValue(0);
+  
+  // Get current model metadata
+  const currentModel = getModelById(selectedModelId);
+  const requiresAttachment = modelRequiresAttachment(selectedModelId);
+  const supportsResolution = modelSupportsResolution(selectedModelId);
+  const supportsQuality = modelSupportsQuality(selectedModelId);
+  const allowedAspectRatios = getModelAspectRatios(selectedModelId);
+  const estimatedCost = calculateImageCost(selectedModelId, numberOfImages);
 
   // Update session when route params change
   useEffect(() => {
@@ -185,20 +312,25 @@ export default function ImagesScreen() {
   }));
 
   const handleAspectRatioAction = (event: { nativeEvent: { event: string } }) => {
-    const ratio = event.nativeEvent.event;
-    setSelectedAspectRatio(ratio);
+    const ratio = event.nativeEvent.event as AspectRatio;
+    if (allowedAspectRatios.includes(ratio)) {
+      setSelectedAspectRatio(ratio);
+    }
   };
 
   const handleImageSourceAction = async (event: { nativeEvent: { event: string } }) => {
     const action = event.nativeEvent.event;
     if (action === "gallery") {
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: false,
-        quality: 1,
-      });
-      if (!result.canceled) {
-        console.log("Selected image from gallery:", result.assets[0].uri);
+      try {
+        const model = getModelById(selectedModelId);
+        const maxSelection = model?.maxAttachments ?? 10;
+        const images = await pickImages({ maxSelection });
+        if (images.length > 0) {
+          setAttachments((prev) => [...prev, ...images].slice(0, maxSelection));
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Failed to pick images";
+        Alert.alert("Error", message);
       }
     } else if (action === "assets") {
       console.log("Open assets");
@@ -221,6 +353,86 @@ export default function ImagesScreen() {
     const count = parseInt(event.nativeEvent.event, 10);
     setNumberOfImages(count);
   };
+
+  // Remove attachment
+  const removeAttachment = (index: number) => {
+    setAttachments((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  // Handle generation
+  const handleGenerate = async () => {
+    if (!prompt.trim()) {
+      Alert.alert("Error", "Please enter a prompt");
+      return;
+    }
+
+    if (requiresAttachment && attachments.length === 0) {
+      Alert.alert("Error", `${currentModel?.label} requires at least one image`);
+      return;
+    }
+
+    if (credits < estimatedCost) {
+      Alert.alert("Insufficient Credits", `You need ${estimatedCost} credits but have ${credits}`);
+      return;
+    }
+
+    Keyboard.dismiss();
+
+    try {
+      let attachmentUrls: Array<{ url: string }> | undefined;
+
+      // Upload attachments if any
+      if (attachments.length > 0) {
+        setIsUploadingAttachments(true);
+        const token = await getToken();
+        if (!token) {
+          throw new Error("Authentication required");
+        }
+        const uploaded = await uploadAttachments(
+          token,
+          attachments.map((a) => a.uri)
+        );
+        attachmentUrls = uploaded.map((u) => ({ url: u.url }));
+        setIsUploadingAttachments(false);
+      }
+
+      // Start generation
+      const result = await generate({
+        prompt: prompt.trim(),
+        modelId: selectedModelId,
+        aspectRatio: selectedAspectRatio,
+        numImages: numberOfImages,
+        attachmentImages: attachmentUrls,
+        resolution: supportsResolution ? selectedResolution : undefined,
+        quality: supportsQuality ? selectedQuality : undefined,
+        sessionId: currentSessionId,
+      });
+
+      if (result.success) {
+        // Update session if new one was created
+        if (result.sessionId && !currentSessionId) {
+          setCurrentSessionId(result.sessionId);
+        }
+        // Clear prompt on success
+        setPrompt("");
+        setAttachments([]);
+      } else {
+        Alert.alert("Generation Failed", result.error || "Unknown error");
+      }
+    } catch (error) {
+      setIsUploadingAttachments(false);
+      const message = error instanceof Error ? error.message : "Generation failed";
+      Alert.alert("Error", message);
+    }
+  };
+
+  // Check if generate button should be enabled
+  const canGenerate =
+    prompt.trim().length > 0 &&
+    !isGenerating &&
+    !isUploadingAttachments &&
+    credits >= estimatedCost &&
+    (!requiresAttachment || attachments.length > 0);
 
   return (
     <SessionsDrawer ref={drawerRef} currentScreen="image">
@@ -320,7 +532,7 @@ export default function ImagesScreen() {
               <Image 
                 source={require("../../assets/imgnewgrad.png")} 
                 style={{ width: 52, height: 52, borderRadius: 12, marginBottom: 8 }}
-                resizeMode="cover"
+                contentFit="cover"
               />
               <Text className="text-white text-sm font-medium">Image</Text>
             </>
@@ -328,10 +540,16 @@ export default function ImagesScreen() {
             generations.map((gen: any, index: number) => {
               const images = gen.images || [];
               const hasMultipleImages = images.length > 1;
+              const isLoadingGen = gen.isLoading;
+              const genAspectRatio = parseAspectRatio(gen.aspectRatio || selectedAspectRatio);
+              const numImages = gen.numImages || 1;
+              // For single images, cap height to prevent very tall portraits taking whole screen
+              const rawHeight = IMAGE_WIDTH / genAspectRatio;
+              const imageHeight = numImages === 1 ? Math.min(rawHeight, IMAGE_WIDTH * 1.3) : rawHeight;
               
               return (
                 <View key={gen._id} className={index < generations.length - 1 ? "mb-6" : ""}>
-                  {/* Prompt Text at TOP */}
+                  {/* Prompt Text at TOP - Right aligned */}
                   {gen.prompt && (
                     <View className="bg-neutral-800 rounded-3xl px-4 py-3 mb-2 self-end" style={{ maxWidth: '90%' }}>
                       <Text className="text-white text-base text-center" numberOfLines={7}>
@@ -340,89 +558,163 @@ export default function ImagesScreen() {
                     </View>
                   )}
 
-                  {/* Model Badge and Time - Right aligned */}
-                  <View className="flex-row items-center justify-end mb-2">
-                    <View className="flex-row items-center bg-neutral-800 rounded-full px-3 py-1.5 mr-2">
+                  {/* Model Badge - Right aligned */}
+                  <View className="flex-row items-center justify-end mb-3">
+                    <View className="flex-row items-center bg-neutral-800 rounded-full px-3 py-1.5">
                       <Ionicons name="image-outline" size={14} color="#fff" />
-                      <Text className="text-white text-xs ml-1.5">{selectedModel}</Text>
+                      <Text className="text-white text-xs ml-1.5">{gen.modelLabel || selectedModelLabel}</Text>
                     </View>
-                    <Text className="text-gray-500 text-xs">
-                      {formatTime(gen.completedAt || gen.createdAt)}
-                    </Text>
                   </View>
 
-                  {/* Generation Header */}
+                  {/* Generation Header - Logo on left */}
                   <View className="flex-row items-center mb-3">
-                    <View className="w-8 h-8 rounded-lg bg-purple-600 items-center justify-center mr-2">
-                      <Ionicons name="sparkles" size={16} color="#fff" />
-                    </View>
-                    <Text className="text-gray-400 text-sm">
-                      Generated at {formatTime(gen.completedAt || gen.createdAt)}
-                    </Text>
+                    <Image
+                      source={require("../../assets/logo.png")}
+                      style={{ width: 32, height: 32 }}
+                      contentFit="contain"
+                    />
+                    {isLoadingGen ? (
+                      <ShimmerText text="Generating..." />
+                    ) : (
+                      <Text className="text-gray-400 text-sm ml-2">
+                        Generated at {formatTime(gen.completedAt || gen.createdAt)}
+                      </Text>
+                    )}
                   </View>
 
-                  {/* Images */}
-                  {images.length === 0 ? (
+                  {/* Images or Loading Skeleton - layered for smooth transition */}
+                  {images.length === 0 && !isLoadingGen ? (
                     <View
                       className="rounded-2xl items-center justify-center"
-                      style={{ width: IMAGE_WIDTH, height: IMAGE_WIDTH * 0.75, backgroundColor: "#1a1a1a" }}
+                      style={{ width: IMAGE_WIDTH, height: imageHeight, backgroundColor: "#1a1a1a" }}
                     >
-                      <Ionicons name="image-outline" size={48} color="#4b5563" />
+                      {gen.error ? (
+                        <>
+                          <Ionicons name="alert-circle-outline" size={48} color="#ef4444" />
+                          <Text className="text-red-400 text-sm mt-2 text-center px-4">{gen.error}</Text>
+                        </>
+                      ) : (
+                        <Ionicons name="image-outline" size={48} color="#4b5563" />
+                      )}
                     </View>
-                  ) : images.length === 1 ? (
-                    <Pressable 
-                      onPress={() => {
-                        setSelectedImage({
-                          url: images[0].url,
-                          prompt: gen.prompt,
-                          model: selectedModel,
-                          aspectRatio: selectedAspectRatio,
-                          createdAt: gen.completedAt || gen.createdAt,
-                        });
-                        imageDetailSheetRef.current?.present();
-                      }}
-                      className="rounded-2xl overflow-hidden active:opacity-90" 
-                      style={{ width: IMAGE_WIDTH }}
-                    >
-                      <Image
-                        source={{ uri: images[0].url }}
-                        style={{ width: IMAGE_WIDTH, height: IMAGE_WIDTH * 1.2 }}
-                        resizeMode="cover"
-                      />
-                    </Pressable>
-                  ) : (
-                    <ScrollView
-                      horizontal
-                      showsHorizontalScrollIndicator={false}
-                      snapToInterval={MULTI_IMAGE_WIDTH + 12}
-                      decelerationRate="fast"
-                      style={{ marginHorizontal: -20 }}
-                      contentContainerStyle={{ paddingHorizontal: 20 }}
-                    >
-                      {images.map((img: any, imgIndex: number) => (
-                        <Pressable
-                          key={imgIndex}
-                          onPress={() => {
-                            setSelectedImage({
-                              url: img.url,
-                              prompt: gen.prompt,
-                              model: selectedModel,
-                              aspectRatio: selectedAspectRatio,
-                              createdAt: gen.completedAt || gen.createdAt,
-                            });
-                            imageDetailSheetRef.current?.present();
-                          }}
-                          className="rounded-2xl overflow-hidden mr-3 active:opacity-90"
-                          style={{ width: MULTI_IMAGE_WIDTH }}
+                  ) : numImages === 1 || images.length === 1 ? (
+                    <View style={{ width: IMAGE_WIDTH, height: imageHeight }}>
+                      {/* Skeleton as background - only render while loading */}
+                      {isLoadingGen && (
+                        <AutoSkeletonView 
+                          isLoading={true} 
+                          defaultRadius={16}
+                          gradientColors={["#1a1a1a", "#2a2a2a"]}
                         >
-                          <Image
-                            source={{ uri: img.url }}
-                            style={{ width: MULTI_IMAGE_WIDTH, height: MULTI_IMAGE_WIDTH * 1.3 }}
-                            resizeMode="cover"
+                          <View
+                            style={{ width: IMAGE_WIDTH, height: imageHeight, backgroundColor: "#1a1a1a", borderRadius: 16 }}
                           />
-                        </Pressable>
-                      ))}
-                    </ScrollView>
+                        </AutoSkeletonView>
+                      )}
+                      {/* Image overlaid on top when ready */}
+                      {images.length > 0 && (
+                        <Animated.View 
+                          entering={FadeIn.duration(400)}
+                          style={{ position: 'absolute', top: 0, left: 0 }}
+                        >
+                          <Pressable 
+                            onPress={() => {
+                              setSelectedImage({
+                                url: images[0].url,
+                                prompt: gen.prompt,
+                                model: gen.modelLabel || selectedModelLabel,
+                                aspectRatio: gen.aspectRatio || selectedAspectRatio,
+                                createdAt: gen.completedAt || gen.createdAt,
+                              });
+                              imageDetailSheetRef.current?.present();
+                            }}
+                            className="rounded-2xl overflow-hidden active:opacity-90" 
+                            style={{ width: IMAGE_WIDTH }}
+                          >
+                            <Image
+                              source={images[0].url}
+                              style={{ width: IMAGE_WIDTH, height: imageHeight }}
+                              contentFit="cover"
+                              cachePolicy="memory-disk"
+                            />
+                          </Pressable>
+                        </Animated.View>
+                      )}
+                    </View>
+                  ) : (
+                    <View style={{ height: MULTI_IMAGE_WIDTH / genAspectRatio }}>
+                      {/* Multi-image skeleton as background */}
+                      {isLoadingGen && (
+                        <ScrollView
+                          horizontal
+                          showsHorizontalScrollIndicator={false}
+                          snapToInterval={MULTI_IMAGE_WIDTH + 12}
+                          decelerationRate="fast"
+                          style={{ marginHorizontal: -20 }}
+                          contentContainerStyle={{ paddingHorizontal: 20 }}
+                        >
+                          {Array.from({ length: numImages }).map((_, idx) => (
+                            <AutoSkeletonView 
+                              key={idx}
+                              isLoading={true} 
+                              defaultRadius={16}
+                              gradientColors={["#1a1a1a", "#2a2a2a"]}
+                            >
+                              <View
+                                style={{ 
+                                  width: MULTI_IMAGE_WIDTH, 
+                                  height: MULTI_IMAGE_WIDTH / genAspectRatio, 
+                                  backgroundColor: "#1a1a1a",
+                                  borderRadius: 16,
+                                  marginRight: 12,
+                                }}
+                              />
+                            </AutoSkeletonView>
+                          ))}
+                        </ScrollView>
+                      )}
+                      {/* Multi-image gallery overlaid when ready */}
+                      {images.length > 1 && (
+                        <Animated.View 
+                          entering={FadeIn.duration(400)}
+                          style={{ position: 'absolute', top: 0, left: 0, right: 0 }}
+                        >
+                          <ScrollView
+                            horizontal
+                            showsHorizontalScrollIndicator={false}
+                            snapToInterval={MULTI_IMAGE_WIDTH + 12}
+                            decelerationRate="fast"
+                            style={{ marginHorizontal: -20 }}
+                            contentContainerStyle={{ paddingHorizontal: 20 }}
+                          >
+                            {images.map((img: any, imgIndex: number) => (
+                              <Pressable
+                                key={imgIndex}
+                                onPress={() => {
+                                  setSelectedImage({
+                                    url: img.url,
+                                    prompt: gen.prompt,
+                                    model: gen.modelLabel || selectedModelLabel,
+                                    aspectRatio: gen.aspectRatio || selectedAspectRatio,
+                                    createdAt: gen.completedAt || gen.createdAt,
+                                  });
+                                  imageDetailSheetRef.current?.present();
+                                }}
+                                className="rounded-2xl overflow-hidden mr-3 active:opacity-90"
+                                style={{ width: MULTI_IMAGE_WIDTH }}
+                              >
+                                <Image
+                                  source={img.url}
+                                  style={{ width: MULTI_IMAGE_WIDTH, height: MULTI_IMAGE_WIDTH / genAspectRatio }}
+                                  contentFit="cover"
+                                  cachePolicy="memory-disk"
+                                />
+                              </Pressable>
+                            ))}
+                          </ScrollView>
+                        </Animated.View>
+                      )}
+                    </View>
                   )}
 
                   {/* Action Buttons */}
@@ -500,7 +792,7 @@ export default function ImagesScreen() {
                   className="flex-row items-center rounded-full px-2.5 mr-2 active:opacity-70"
                   style={{ backgroundColor: "#3a3a3a", height: 28 }}
                 >
-                  <Text className="text-white text-xs mr-1">{selectedModel}</Text>
+                  <Text className="text-white text-xs mr-1">{selectedModelLabel}</Text>
                   <Ionicons name="chevron-down" size={12} color="#fff" />
                 </Pressable>
                 <MenuView
@@ -549,16 +841,52 @@ export default function ImagesScreen() {
                     <Ionicons name="add" size={20} color="#fff" />
                   </Pressable>
                 </MenuView>
-                <Pressable className="rounded-full p-2 active:opacity-70" style={{ backgroundColor: "#3a3a3a" }}>
-                  <Ionicons name="sparkles-outline" size={18} color="#fff" />
+                {/* Generate Button - same size as + button */}
+                <Pressable
+                  onPress={handleGenerate}
+                  disabled={!canGenerate}
+                  className="rounded-full p-2 active:opacity-70"
+                  style={{ 
+                    backgroundColor: canGenerate ? "#a855f7" : "#4a4a4a",
+                    opacity: canGenerate ? 1 : 0.6,
+                  }}
+                >
+                  {isGenerating || isUploadingAttachments ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <Ionicons name="sparkles" size={20} color="#fff" />
+                  )}
                 </Pressable>
               </View>
             </View>
 
-            {/* Enhance Prompt Row */}
-            <View className="flex-row items-center mt-2">
+            {/* Attachments Preview */}
+            {attachments.length > 0 && (
+              <View className="mt-3">
+                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                  {attachments.map((attachment, index) => (
+                    <View key={index} className="mr-2 relative">
+                      <Image
+                        source={attachment.uri}
+                        style={{ width: 60, height: 60, borderRadius: 8 }}
+                        contentFit="cover"
+                      />
+                      <Pressable
+                        onPress={() => removeAttachment(index)}
+                        className="absolute -top-1 -right-1 bg-red-500 rounded-full w-5 h-5 items-center justify-center"
+                      >
+                        <Ionicons name="close" size={12} color="#fff" />
+                      </Pressable>
+                    </View>
+                  ))}
+                </ScrollView>
+              </View>
+            )}
+
+            {/* Bottom Row: Enhance prompt only */}
+            <View className="flex-row items-center mt-3">
               <Pressable
-                className="flex-row items-center rounded-full px-2.5 py-1.5 mr-2 active:opacity-70"
+                className="flex-row items-center rounded-full px-2.5 py-1.5 active:opacity-70"
                 style={{ backgroundColor: "#3a3a3a" }}
               >
                 <Ionicons name="hardware-chip-outline" size={14} color="#fff" />
@@ -571,7 +899,23 @@ export default function ImagesScreen() {
       </SafeAreaView>
 
       {/* Model Selector Bottom Sheet */}
-      <ModelSelectorSheet ref={modelSheetRef} onSelectModel={setSelectedModel} />
+      <ModelSelectorSheet 
+        ref={modelSheetRef} 
+        selectedModelId={selectedModelId}
+        onSelectModel={(modelId, modelLabel) => {
+          setSelectedModelId(modelId);
+          setSelectedModelLabel(modelLabel);
+          // Reset aspect ratio if not supported by new model
+          const newAllowedRatios = getModelAspectRatios(modelId);
+          if (!newAllowedRatios.includes(selectedAspectRatio)) {
+            setSelectedAspectRatio(newAllowedRatios[0]);
+          }
+          // Clear attachments when switching to non-edit model
+          if (!modelRequiresAttachment(modelId)) {
+            setAttachments([]);
+          }
+        }} 
+      />
 
       {/* Generated Image Detail Sheet */}
       <GeneratedImageSheet
