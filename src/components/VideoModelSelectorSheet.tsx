@@ -1,5 +1,6 @@
 import React, { useCallback, useMemo, forwardRef, useRef } from "react";
-import { View, Text, Pressable, Image, useWindowDimensions } from "react-native";
+import { View, Text, Pressable, useWindowDimensions } from "react-native";
+import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
 import { BottomSheetModal, BottomSheetFlatList, BottomSheetBackdrop } from "@gorhom/bottom-sheet";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -118,7 +119,7 @@ const VideoModelSelectorSheet = forwardRef<BottomSheetModal, Props>(({ onSelectM
           {item.iconType === "emoji" ? (
             <Text className="text-xl">{item.emoji}</Text>
           ) : (
-            <Image source={item.icon} style={{ width: 28, height: 28 }} resizeMode="contain" />
+            <Image source={item.icon} style={{ width: 28, height: 28 }} contentFit="contain" />
           )}
         </View>
         <View className="flex-1">

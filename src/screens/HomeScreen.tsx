@@ -1,5 +1,6 @@
 import React, { useState, useRef, useCallback } from "react";
-import { View, Text, Pressable, ScrollView, TextInput, TouchableWithoutFeedback, Keyboard, Image, ActionSheetIOS, Platform, Modal, LayoutAnimation, UIManager, Animated as RNAnimated } from "react-native";
+import { View, Text, Pressable, ScrollView, TextInput, TouchableWithoutFeedback, Keyboard, ActionSheetIOS, Platform, Modal, LayoutAnimation, UIManager, Animated as RNAnimated } from "react-native";
+import { Image } from "expo-image";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
@@ -529,7 +530,7 @@ export default function HomeScreen() {
                       <Image
                         source={tool.customImage}
                         style={{ width: 52, height: 52, borderRadius: 16, marginBottom: 6 }}
-                        resizeMode="cover"
+                        contentFit="cover"
                       />
                     ) : (
                       <LinearGradient
@@ -572,9 +573,10 @@ export default function HomeScreen() {
                           style={{ backgroundColor: "#1e293b" }}
                         >
                           <Image
-                            source={{ uri: imageUrl }}
-                            className="w-full h-full"
-                            resizeMode="cover"
+                            source={imageUrl}
+                            style={{ width: "100%", height: "100%" }}
+                            contentFit="cover"
+                            cachePolicy="memory-disk"
                           />
                         </View>
                       </Pressable>

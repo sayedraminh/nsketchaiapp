@@ -12,6 +12,7 @@ import { Image } from "expo-image";
 import * as MediaLibrary from "expo-media-library";
 import * as FileSystem from "expo-file-system";
 import { Ionicons } from "@expo/vector-icons";
+import { LinearGradient } from "expo-linear-gradient";
 import {
   BottomSheetModal,
   BottomSheetScrollView,
@@ -210,25 +211,11 @@ const GeneratedImageSheet = forwardRef<BottomSheetModal, Props>(
         onDismiss={onClose}
       >
         {image ? (
-          <BottomSheetScrollView
-            contentContainerStyle={{ paddingBottom: insets.bottom + 20 }}
-          >
-            {/* Header */}
-            <View className="flex-row items-center justify-between px-5 py-4">
-              <Pressable
-                onPress={handleClose}
-                className="px-4 py-2 rounded-full"
-                style={{ backgroundColor: "#333" }}
-              >
-                <Text className="text-white font-semibold">Close</Text>
-              </Pressable>
-              <Text className="text-white font-bold text-lg">
-                Generated Image
-              </Text>
-              <View style={{ width: 60 }} />
-            </View>
-
-            {/* Image Preview */}
+          <View style={{ flex: 1 }}>
+            <BottomSheetScrollView
+              contentContainerStyle={{ paddingBottom: insets.bottom + 20, paddingTop: 60 }}
+            >
+              {/* Image Preview */}
             <View
               style={{
                 marginHorizontal: 20,
@@ -334,7 +321,36 @@ const GeneratedImageSheet = forwardRef<BottomSheetModal, Props>(
                 </Text>
               </Pressable>
             </View>
-          </BottomSheetScrollView>
+            </BottomSheetScrollView>
+            
+            {/* Floating Header with vignette gradient */}
+            <LinearGradient
+              colors={['rgba(0, 0, 0, 0.6)', 'rgba(0, 0, 0, 0.2)', 'transparent']}
+              style={{ 
+                position: 'absolute', 
+                top: 0, 
+                left: 0, 
+                right: 0,
+                height: 100,
+              }}
+            >
+              <View 
+                className="flex-row items-center justify-between px-5 py-4"
+              >
+                <Pressable
+                  onPress={handleClose}
+                  className="px-4 py-2 rounded-full"
+                  style={{ backgroundColor: "rgba(51, 51, 51, 0.8)" }}
+                >
+                  <Text className="text-white font-semibold">Close</Text>
+                </Pressable>
+                <Text className="text-white font-bold text-lg">
+                  Generated Image
+                </Text>
+                <View style={{ width: 60 }} />
+              </View>
+            </LinearGradient>
+          </View>
         ) : null}
       </BottomSheetModal>
     );

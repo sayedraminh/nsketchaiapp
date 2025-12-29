@@ -1,5 +1,6 @@
 import React, { useRef } from "react";
-import { View, Text, Pressable, Image } from "react-native";
+import { View, Text, Pressable } from "react-native";
+import { Image } from "expo-image";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
@@ -118,7 +119,7 @@ export default function VideosScreen() {
             <Image 
               source={require("../../assets/vidnewgrad.png")} 
               style={{ width: 52, height: 52, borderRadius: 12, marginBottom: 8 }}
-              resizeMode="cover"
+              contentFit="cover"
             />
             <Text className="text-white text-sm font-medium">Video</Text>
           </Animated.ScrollView>

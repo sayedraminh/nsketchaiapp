@@ -1,16 +1,18 @@
-import React, { useCallback, useMemo, forwardRef, useRef } from "react";
-import { View, Text, Pressable, Image, useWindowDimensions } from "react-native";
+import React, { useCallback, useMemo, forwardRef, useRef, useState } from "react";
+import { View, Text, Pressable, useWindowDimensions, TextInput } from "react-native";
+import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
 import { BottomSheetModal, BottomSheetFlatList, BottomSheetBackdrop } from "@gorhom/bottom-sheet";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { IMAGE_MODELS, getSortedModels, ImageModelId, ImageModelMeta } from "../config/imageModels";
 
 interface Badge {
-  type: "new" | "edit" | "credits";
+  type: "new" | "edit" | "credits" | "resolution" | "quality";
   label?: string;
 }
 
 interface ModelItem {
-  id: string;
+  id: ImageModelId;
   name: string;
   description: string;
   icon: any;
@@ -18,30 +20,80 @@ interface ModelItem {
   badges: Badge[];
 }
 
-const models: ModelItem[] = [
-  { id: "1", name: "Seedream v4", description: "High-res 2K+ with strong text layout", icon: require("../../assets/decart.png"), badges: [{ type: "new" }, { type: "credits", label: "3 credits" }] },
-  { id: "2", name: "Seedream v4 Edit", description: "Multi-image editing (up to 10 refs)", icon: require("../../assets/decart.png"), badges: [{ type: "new" }, { type: "edit" }, { type: "credits", label: "3 credits" }] },
-  { id: "3", name: "Reve", description: "Detailed visual output with strong aesthetic", icon: require("../../assets/donereve.png"), badges: [{ type: "new" }, { type: "credits", label: "3 credits" }] },
-  { id: "4", name: "Reve Edit", description: "Edit and transform images with text", icon: require("../../assets/donereve.png"), badges: [{ type: "new" }, { type: "edit" }, { type: "credits", label: "3 credits" }] },
-  { id: "5", name: "Hunyuan Image 3.0", description: "Tencent's latest text-to-image model", icon: require("../../assets/bytedance-color.png"), badges: [{ type: "new" }, { type: "credits", label: "3 credits" }] },
-  { id: "6", name: "FLUX Kontext Pro", description: "Powerful image-to-image editing", icon: require("../../assets/flux.png"), tintColor: "#fff", badges: [{ type: "edit" }, { type: "credits", label: "3 credits" }] },
-  { id: "7", name: "Imagen 4", description: "Fast, reliable text-to-image", icon: require("../../assets/googleg.png"), badges: [{ type: "credits", label: "3 credits" }] },
-  { id: "8", name: "Imagen 3", description: "Google's most realistic image generation", icon: require("../../assets/googleg.png"), badges: [{ type: "credits", label: "3 credits" }] },
-  { id: "9", name: "Nano Banana", description: "Fast text-to-image with aspect ratios", icon: require("../../assets/googleg.png"), badges: [{ type: "credits", label: "3 credits" }] },
-  { id: "10", name: "Nano Banana Edit", description: "Edit with up to 10 reference images", icon: require("../../assets/googleg.png"), badges: [{ type: "edit" }, { type: "credits", label: "3 credits" }] },
-  { id: "11", name: "GPT-Image 1", description: "OpenAI text-to-image", icon: require("../../assets/openai.png"), tintColor: "#fff", badges: [{ type: "credits", label: "3 credits" }] },
-  { id: "12", name: "GPT-Image 1 Edit", description: "OpenAI image editing", icon: require("../../assets/openai.png"), tintColor: "#fff", badges: [{ type: "edit" }, { type: "credits", label: "3 credits" }] },
-];
+// Logo assets mapping
+const LOGO_ASSETS: Record<string, any> = {
+  "openai": require("../../assets/openai.png"),
+  "googleg": require("../../assets/googleg.png"),
+  "flux": require("../../assets/flux.png"),
+  "bytedance-color": require("../../assets/bytedance-color.png"),
+  "donereve": require("../../assets/donereve.png"),
+  "hunyuan": require("../../assets/bytedance-color.png"), // fallback
+  "kling": require("../../assets/bytedance-color.png"), // fallback
+};
 
-interface Props {
-  onSelectModel: (model: string) => void;
+// Logo tint colors (for dark icons that need white tint)
+const LOGO_TINTS: Record<string, string | undefined> = {
+  "openai": "#fff",
+  "flux": "#fff",
+};
+
+// Convert ImageModelMeta to ModelItem
+function modelMetaToItem(meta: ImageModelMeta): ModelItem {
+  const badges: Badge[] = [];
+  
+  if (meta.isNew) {
+    badges.push({ type: "new" });
+  }
+  
+  if (meta.requiresAttachment) {
+    badges.push({ type: "edit" });
+  }
+  
+  if (meta.supportsResolution) {
+    badges.push({ type: "resolution", label: "1K/2K/4K" });
+  }
+  
+  if (meta.supportsQuality) {
+    badges.push({ type: "quality", label: "Quality" });
+  }
+  
+  badges.push({ type: "credits", label: `${meta.creditCost} credits` });
+  
+  return {
+    id: meta.id,
+    name: meta.label,
+    description: meta.description,
+    icon: LOGO_ASSETS[meta.logo] || LOGO_ASSETS["googleg"],
+    tintColor: LOGO_TINTS[meta.logo],
+    badges,
+  };
 }
 
-const ModelSelectorSheet = forwardRef<BottomSheetModal, Props>(({ onSelectModel }, ref) => {
+// Get all models as ModelItems, sorted
+const models: ModelItem[] = getSortedModels().map(modelMetaToItem);
+
+interface Props {
+  onSelectModel: (modelId: ImageModelId, modelLabel: string) => void;
+  selectedModelId?: ImageModelId;
+}
+
+const ModelSelectorSheet = forwardRef<BottomSheetModal, Props>(({ onSelectModel, selectedModelId }, ref) => {
   const internalRef = useRef<BottomSheetModal>(null);
   const insets = useSafeAreaInsets();
   const { height } = useWindowDimensions();
   const snapPoints = useMemo(() => [height * 1 - insets.top], [height, insets.top]);
+  const [searchQuery, setSearchQuery] = useState("");
+
+  // Filter models based on search
+  const filteredModels = useMemo(() => {
+    if (!searchQuery.trim()) return models;
+    const query = searchQuery.toLowerCase();
+    return models.filter(
+      (m) =>
+        m.name.toLowerCase().includes(query) ||
+        m.description.toLowerCase().includes(query)
+    );
+  }, [searchQuery]);
 
   // Sync internal ref with forwarded ref
   const setRef = useCallback((instance: BottomSheetModal | null) => {
@@ -60,14 +112,15 @@ const ModelSelectorSheet = forwardRef<BottomSheetModal, Props>(({ onSelectModel 
     []
   );
 
-  const handleSelectModel = useCallback((modelName: string) => {
-    onSelectModel(modelName);
+  const handleSelectModel = useCallback((modelId: ImageModelId, modelLabel: string) => {
+    onSelectModel(modelId, modelLabel);
+    setSearchQuery("");
     internalRef.current?.dismiss();
   }, [onSelectModel]);
 
   const renderItem = useCallback(({ item }: { item: ModelItem }) => (
     <Pressable
-      onPress={() => handleSelectModel(item.name)}
+      onPress={() => handleSelectModel(item.id, item.name)}
       className="mb-5 active:opacity-70"
     >
       <View className="flex-row items-start mb-2">
@@ -75,7 +128,7 @@ const ModelSelectorSheet = forwardRef<BottomSheetModal, Props>(({ onSelectModel 
           <Image 
             source={item.icon} 
             style={{ width: 28, height: 28, ...(item.tintColor ? { tintColor: item.tintColor } : {}) }} 
-            resizeMode="contain" 
+            contentFit="contain" 
           />
         </View>
         <View className="flex-1">
@@ -108,6 +161,22 @@ const ModelSelectorSheet = forwardRef<BottomSheetModal, Props>(({ onSelectModel 
               </View>
             );
           }
+          if (badge.type === "resolution") {
+            return (
+              <View key={index} className="rounded-full px-2.5 py-1 mr-2 mb-1 flex-row items-center" style={{ backgroundColor: "#2a2a2a" }}>
+                <Ionicons name="resize-outline" size={11} color="#fff" />
+                <Text className="text-white text-xs ml-1">{badge.label}</Text>
+              </View>
+            );
+          }
+          if (badge.type === "quality") {
+            return (
+              <View key={index} className="rounded-full px-2.5 py-1 mr-2 mb-1 flex-row items-center" style={{ backgroundColor: "#2a2a2a" }}>
+                <Ionicons name="star-outline" size={11} color="#fff" />
+                <Text className="text-white text-xs ml-1">{badge.label}</Text>
+              </View>
+            );
+          }
           return null;
         })}
       </View>
@@ -125,11 +194,36 @@ const ModelSelectorSheet = forwardRef<BottomSheetModal, Props>(({ onSelectModel 
       handleComponent={() => null}
       topInset={insets.top}
     >
+      <View className="px-5 pt-4 pb-3">
+        <View className="flex-row items-center bg-neutral-800 rounded-xl px-4 py-3">
+          <Ionicons name="search" size={18} color="#9ca3af" />
+          <TextInput
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            placeholder="Search models..."
+            placeholderTextColor="#9ca3af"
+            className="flex-1 text-white text-base ml-2"
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+          {searchQuery.length > 0 && (
+            <Pressable onPress={() => setSearchQuery("")} className="p-1">
+              <Ionicons name="close-circle" size={18} color="#9ca3af" />
+            </Pressable>
+          )}
+        </View>
+      </View>
       <BottomSheetFlatList
-        data={models}
+        data={filteredModels}
         keyExtractor={(item) => item.id}
         renderItem={renderItem}
-        contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 10, paddingBottom: 40 }}
+        contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 40 }}
+        ListEmptyComponent={
+          <View className="items-center py-10">
+            <Ionicons name="search-outline" size={48} color="#4b5563" />
+            <Text className="text-gray-500 mt-3">No models found</Text>
+          </View>
+        }
       />
     </BottomSheetModal>
   );

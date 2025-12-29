@@ -24,6 +24,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
           CFBundleURLSchemes: ["nsketchapp"],
         },
       ],
+      NSPhotoLibraryAddUsageDescription: "Allow NSketch to save generated images to your photo library.",
     },
   },
   android: {

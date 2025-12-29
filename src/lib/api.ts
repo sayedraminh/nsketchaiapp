@@ -1,8 +1,8 @@
 import Constants from "expo-constants";
 
 const apiBaseUrl =
-  Constants.expoConfig?.extra?.apiBaseUrl ||
-  process.env.EXPO_PUBLIC_API_BASE_URL;
+  process.env.EXPO_PUBLIC_API_BASE_URL ||
+  Constants.expoConfig?.extra?.apiBaseUrl;
 
 interface ApiRequestOptions {
   method?: "GET" | "POST" | "PUT" | "DELETE" | "PATCH";
@@ -24,6 +24,7 @@ export async function apiRequest<T>(
   }
 
   const url = `${apiBaseUrl}${endpoint}`;
+  console.log("[apiRequest] Full URL:", url);
 
   const requestHeaders: Record<string, string> = {
     "Content-Type": "application/json",
@@ -32,6 +33,7 @@ export async function apiRequest<T>(
 
   if (token) {
     requestHeaders["Authorization"] = `Bearer ${token}`;
+    console.log("[apiRequest] Auth header set with token");
   }
 
   const response = await fetch(url, {
