@@ -773,8 +773,9 @@ export default function ImagesScreen() {
                           setSavingGenerationId(gen._id);
                           
                           // Download all images in parallel
+                          const batchTimestamp = Date.now();
                           const savePromises = images.map(async (img: any, idx: number) => {
-                            const filename = `nsketch_${Date.now()}_${idx}.jpg`;
+                            const filename = `nsketch_${batchTimestamp}_${idx}.jpg`;
                             const fileUri = FileSystem.cacheDirectory + filename;
                             const downloadResult = await FileSystem.downloadAsync(img.url, fileUri);
                             await MediaLibrary.saveToLibraryAsync(downloadResult.uri);
