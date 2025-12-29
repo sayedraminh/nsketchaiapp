@@ -4,11 +4,11 @@ import {
   Text,
   Pressable,
   ScrollView,
-  Image,
   Dimensions,
   ActivityIndicator,
   Animated as RNAnimated,
 } from "react-native";
+import { Image } from "expo-image";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
@@ -293,9 +293,9 @@ const SessionsDrawer = forwardRef<SessionsDrawerRef, SessionsDrawerProps>(
               >
                 {session.preview ? (
                   <Image
-                    source={{ uri: session.preview }}
+                    source={session.preview}
                     style={{ width: "100%", height: "100%" }}
-                    resizeMode="cover"
+                    contentFit="cover"
                   />
                 ) : (
                   <Ionicons name={getTypeIcon(session.type)} size={20} color="#6b7280" />

@@ -1,5 +1,6 @@
 import React from "react";
-import { View, Text, Pressable, Image, Dimensions } from "react-native";
+import { View, Text, Pressable, Dimensions } from "react-native";
+import { Image } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
@@ -44,8 +45,8 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
               style={{
                 width: 180,
                 height: 180,
-                resizeMode: "contain",
               }}
+              contentFit="contain"
             />
             <Text className="text-white text-2xl font-bold mt-4">
               NSketch

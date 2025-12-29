@@ -1,5 +1,5 @@
 import React, { useState, useRef, useCallback, useEffect } from "react";
-import { View, Text, Pressable, ScrollView, TextInput, Platform, UIManager, Keyboard, Dimensions, ActivityIndicator, Alert, ToastAndroid } from "react-native";
+import { View, Text, Pressable, ScrollView, TextInput, Platform, UIManager, Keyboard, Dimensions, ActivityIndicator, Alert, ToastAndroid, Linking } from "react-native";
 import { Image } from "expo-image";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
@@ -35,6 +35,8 @@ import {
   DEFAULT_SETTINGS,
 } from "../config/imageModels";
 import { pickImages, uploadAttachments, SelectedImage } from "../lib/attachments";
+import * as FileSystem from "expo-file-system";
+import * as MediaLibrary from "expo-media-library";
 import { AutoSkeletonView } from "react-native-auto-skeleton";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
@@ -173,6 +175,7 @@ export default function ImagesScreen() {
   const [selectedQuality, setSelectedQuality] = useState<Quality>(DEFAULT_SETTINGS.quality);
   const [attachments, setAttachments] = useState<SelectedImage[]>([]);
   const [isUploadingAttachments, setIsUploadingAttachments] = useState(false);
+  const [savingGenerationId, setSavingGenerationId] = useState<string | null>(null);
   
   // UI state
   const [showAdvancedOptions, setShowAdvancedOptions] = useState(false);
@@ -746,9 +749,66 @@ export default function ImagesScreen() {
                       <Ionicons name="share-outline" size={16} color="#9ca3af" />
                       <Text className="text-gray-400 text-sm ml-1">Share Parameters</Text>
                     </Pressable>
-                    <Pressable className="flex-row items-center active:opacity-70">
-                      <Ionicons name="download-outline" size={16} color="#9ca3af" />
-                      <Text className="text-gray-400 text-sm ml-1">Download</Text>
+                    <Pressable 
+                      className="flex-row items-center active:opacity-70"
+                      disabled={savingGenerationId === gen._id}
+                      onPress={async () => {
+                        if (images.length === 0 || savingGenerationId) return;
+                        
+                        try {
+                          // Request permission
+                          const { status } = await MediaLibrary.requestPermissionsAsync();
+                          if (status !== 'granted') {
+                            Alert.alert(
+                              'Permission Required',
+                              'Please allow access to save images to your photo library.',
+                              [
+                                { text: 'Cancel', style: 'cancel' },
+                                { text: 'Open Settings', onPress: () => Linking.openSettings() }
+                              ]
+                            );
+                            return;
+                          }
+                          
+                          setSavingGenerationId(gen._id);
+                          
+                          // Download all images in parallel
+                          const savePromises = images.map(async (img: any, idx: number) => {
+                            const filename = `nsketch_${Date.now()}_${idx}.jpg`;
+                            const fileUri = FileSystem.cacheDirectory + filename;
+                            const downloadResult = await FileSystem.downloadAsync(img.url, fileUri);
+                            await MediaLibrary.saveToLibraryAsync(downloadResult.uri);
+                          });
+                          
+                          await Promise.all(savePromises);
+                          const savedCount = images.length;
+                          
+                          setSavingGenerationId(null);
+                          
+                          if (Platform.OS === 'ios') {
+                            Alert.alert('Saved', `${savedCount} image${savedCount > 1 ? 's' : ''} saved to Photos`);
+                          } else {
+                            ToastAndroid.show(`${savedCount} image${savedCount > 1 ? 's' : ''} saved`, ToastAndroid.SHORT);
+                          }
+                        } catch (error) {
+                          setSavingGenerationId(null);
+                          console.error('Download error:', error);
+                          Alert.alert('Error', 'Failed to save image(s)');
+                        }
+                      }}
+                    >
+                      {savingGenerationId === gen._id ? (
+                        <ActivityIndicator size="small" color="#9ca3af" />
+                      ) : (
+                        <Ionicons name="download-outline" size={16} color="#9ca3af" />
+                      )}
+                      <Text className="text-gray-400 text-sm ml-1">
+                        {savingGenerationId === gen._id 
+                          ? 'Saving...' 
+                          : images.length > 1 
+                            ? 'Download All' 
+                            : 'Download'}
+                      </Text>
                     </Pressable>
                   </ScrollView>
                 </View>

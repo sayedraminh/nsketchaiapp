@@ -14,6 +14,7 @@ import { useVideoPlayer, VideoView } from "expo-video";
 import * as MediaLibrary from "expo-media-library";
 import * as FileSystem from "expo-file-system";
 import { Ionicons } from "@expo/vector-icons";
+import { LinearGradient } from "expo-linear-gradient";
 import {
   BottomSheetModal,
   BottomSheetScrollView,
@@ -242,25 +243,11 @@ const AssetDetailSheet = forwardRef<BottomSheetModal, Props>(
         onDismiss={onClose}
       >
         {asset ? (
-        <BottomSheetScrollView
-          contentContainerStyle={{ paddingBottom: insets.bottom + 20 }}
-        >
-          {/* Header */}
-          <View className="flex-row items-center justify-between px-5 py-4">
-            <Pressable
-              onPress={handleClose}
-              className="px-4 py-2 rounded-full"
-              style={{ backgroundColor: "#333" }}
+          <View style={{ flex: 1 }}>
+            <BottomSheetScrollView
+              contentContainerStyle={{ paddingBottom: insets.bottom + 20, paddingTop: 60 }}
             >
-              <Text className="text-white font-semibold">Close</Text>
-            </Pressable>
-            <Text className="text-white font-bold text-lg">
-              {asset.mediaType === "video" ? "Video Asset" : "Image Asset"}
-            </Text>
-            <View style={{ width: 60 }} />
-          </View>
-
-          {/* Asset Preview */}
+              {/* Asset Preview */}
           <View
             style={{
               marginHorizontal: 20,
@@ -388,13 +375,13 @@ const AssetDetailSheet = forwardRef<BottomSheetModal, Props>(
                   Style Images
                 </Text>
                 <Image
-                  source={{ uri: asset.previewUrl }}
+                  source={asset.previewUrl}
                   style={{
                     width: 80,
                     height: 80,
                     borderRadius: 8,
                   }}
-                  resizeMode="cover"
+                  contentFit="cover"
                 />
               </View>
             )}
@@ -469,6 +456,35 @@ const AssetDetailSheet = forwardRef<BottomSheetModal, Props>(
             </Pressable>
           </View>
         </BottomSheetScrollView>
+            
+            {/* Floating Header with vignette gradient */}
+            <LinearGradient
+              colors={['rgba(0, 0, 0, 0.6)', 'rgba(0, 0, 0, 0.2)', 'transparent']}
+              style={{ 
+                position: 'absolute', 
+                top: 0, 
+                left: 0, 
+                right: 0,
+                height: 100,
+              }}
+            >
+              <View 
+                className="flex-row items-center justify-between px-5 py-4"
+              >
+                <Pressable
+                  onPress={handleClose}
+                  className="px-4 py-2 rounded-full"
+                  style={{ backgroundColor: "rgba(51, 51, 51, 0.8)" }}
+                >
+                  <Text className="text-white font-semibold">Close</Text>
+                </Pressable>
+                <Text className="text-white font-bold text-lg">
+                  {asset.mediaType === "video" ? "Video Asset" : "Image Asset"}
+                </Text>
+                <View style={{ width: 60 }} />
+              </View>
+            </LinearGradient>
+          </View>
         ) : null}
       </BottomSheetModal>
     );

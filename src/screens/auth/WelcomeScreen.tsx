@@ -3,10 +3,10 @@ import {
   View,
   Text,
   Pressable,
-  Image,
   ActivityIndicator,
   Alert,
 } from "react-native";
+import { Image } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
 import { useSSO, useAuth } from "@clerk/clerk-expo";
@@ -98,8 +98,8 @@ export default function WelcomeScreen({ navigation }: WelcomeScreenProps) {
               style={{
                 width: 180,
                 height: 180,
-                resizeMode: "contain",
               }}
+              contentFit="contain"
             />
             <Text className="text-white text-2xl font-bold mt-4">NSketch</Text>
             <Text className="text-gray-400 text-center mt-2">
