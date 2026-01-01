@@ -31,10 +31,20 @@ import {
   modelRequiresAttachment,
   modelSupportsResolution,
   modelSupportsQuality,
+  modelSupportsMultipleImages,
+  isKlingO1Model,
+  validateKlingO1Prompt,
   calculateImageCost,
+  isAttachmentDisabled,
+  isAspectRatioDisabled,
+  getResolutionOptions,
+  getMaxImages,
+  getEffectiveModelId,
+  isUnifiedModel,
   DEFAULT_SETTINGS,
 } from "../config/imageModels";
 import { pickImages, uploadAttachments, SelectedImage } from "../lib/attachments";
+import AssetPickerSheet from "../components/AssetPickerSheet";
 import * as FileSystem from "expo-file-system";
 import * as MediaLibrary from "expo-media-library";
 import { AutoSkeletonView } from "react-native-auto-skeleton";
@@ -182,6 +192,7 @@ export default function ImagesScreen() {
   const drawerRef = useRef<SessionsDrawerRef>(null);
   const modelSheetRef = useRef<BottomSheetModal>(null);
   const imageDetailSheetRef = useRef<BottomSheetModal>(null);
+  const assetPickerSheetRef = useRef<BottomSheetModal>(null);
   const [selectedImage, setSelectedImage] = useState<{
     url: string;
     prompt?: string;
@@ -191,6 +202,24 @@ export default function ImagesScreen() {
   } | null>(null);
   const translateY = useSharedValue(0);
   const scrollY = useSharedValue(0);
+  const attachmentsProgress = useSharedValue(0);
+
+  const attachmentsAnimatedStyle = useAnimatedStyle(() => ({
+    opacity: attachmentsProgress.value,
+    height: attachmentsProgress.value * 76,
+    overflow: 'hidden' as const,
+  }));
+
+  // Animate attachments section when attachments change
+  useEffect(() => {
+    attachmentsProgress.value = withTiming(attachments.length > 0 ? 1 : 0, {
+      duration: 250,
+      easing: Easing.out(Easing.cubic),
+    });
+  }, [attachments.length]);
+  
+  // Track if we've processed incoming data from Home screen
+  const processedIncomingRef = useRef<string | null>(null);
   
   // Get current model metadata
   const currentModel = getModelById(selectedModelId);
@@ -198,7 +227,11 @@ export default function ImagesScreen() {
   const supportsResolution = modelSupportsResolution(selectedModelId);
   const supportsQuality = modelSupportsQuality(selectedModelId);
   const allowedAspectRatios = getModelAspectRatios(selectedModelId);
-  const estimatedCost = calculateImageCost(selectedModelId, numberOfImages);
+  const estimatedCost = calculateImageCost(selectedModelId, numberOfImages, {
+    resolution: selectedResolution,
+    quality: selectedQuality,
+    aspectRatio: selectedAspectRatio,
+  });
 
   // Update session when route params change
   useEffect(() => {
@@ -207,6 +240,113 @@ export default function ImagesScreen() {
       setCurrentSessionTitle(route.params.sessionTitle);
     }
   }, [route.params?.sessionId, route.params?.sessionTitle]);
+
+  // Handle generation from incoming Home screen data
+  const handleGenerateFromIncoming = async (incoming: {
+    prompt: string;
+    modelId: string;
+    modelLabel: string;
+    aspectRatio: string;
+    numImages: number;
+    imageUrls?: string[];
+  }) => {
+    try {
+      const token = await getToken();
+      if (!token) {
+        Alert.alert("Error", "Authentication required");
+        return;
+      }
+
+      // Prepare attachment URLs if any
+      let attachmentUrls: Array<{ url: string }> | undefined;
+      if (incoming.imageUrls && incoming.imageUrls.length > 0) {
+        attachmentUrls = incoming.imageUrls.map(url => ({ url }));
+      }
+
+      // Get effective model ID (switches to edit model if attachments present)
+      const effectiveModelId = getEffectiveModelId(
+        incoming.modelId as ImageModelId, 
+        (attachmentUrls?.length ?? 0) > 0
+      );
+
+      // Start generation
+      const result = await generate({
+        prompt: incoming.prompt,
+        modelId: effectiveModelId,
+        aspectRatio: incoming.aspectRatio as AspectRatio,
+        numImages: incoming.numImages,
+        attachmentImages: attachmentUrls,
+        sessionId: undefined, // Fresh session
+      });
+
+      if (result.success) {
+        // Update session if new one was created
+        if (result.sessionId) {
+          setCurrentSessionId(result.sessionId);
+        }
+        // Clear prompt and attachments on success
+        setPrompt("");
+        setAttachments([]);
+      } else {
+        Alert.alert("Generation Failed", result.error || "Unknown error");
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Generation failed";
+      Alert.alert("Error", message);
+    }
+  };
+
+  // Handle incoming generation data from Home screen
+  useEffect(() => {
+    const incoming = route.params?.incoming;
+    if (!incoming) return;
+
+    // Create a unique key for this incoming request to prevent duplicate processing
+    const incomingKey = `${incoming.prompt}-${incoming.modelId}-${Date.now()}`;
+    if (processedIncomingRef.current === incomingKey) return;
+    
+    // Prefill the prompt bar with incoming data
+    setPrompt(incoming.prompt);
+    if (incoming.modelId) {
+      setSelectedModelId(incoming.modelId as ImageModelId);
+    }
+    if (incoming.modelLabel) {
+      setSelectedModelLabel(incoming.modelLabel);
+    }
+    if (incoming.aspectRatio) {
+      setSelectedAspectRatio(incoming.aspectRatio as AspectRatio);
+    }
+    if (incoming.numImages) {
+      setNumberOfImages(incoming.numImages);
+    }
+
+    // Handle attached images from Home
+    if (incoming.imageUrls && incoming.imageUrls.length > 0) {
+      const newAttachments: SelectedImage[] = incoming.imageUrls.map(url => ({
+        uri: url,
+        url: url,
+        width: 0,
+        height: 0,
+        isFromAssets: true,
+      } as SelectedImage & { url?: string; isFromAssets?: boolean }));
+      setAttachments(newAttachments);
+    }
+
+    // Mark as processed
+    processedIncomingRef.current = incomingKey;
+
+    // Clear the session for a fresh generation
+    setCurrentSessionId(undefined);
+    setCurrentSessionTitle(undefined);
+
+    // Auto-trigger generation if requested
+    if (incoming.autoGenerate) {
+      // Small delay to ensure state is updated
+      setTimeout(() => {
+        handleGenerateFromIncoming(incoming);
+      }, 100);
+    }
+  }, [route.params?.incoming]);
 
   // Fetch generations if we have a sessionId
   const generations = useQuery(
@@ -282,8 +422,6 @@ export default function ImagesScreen() {
     marginTop: advancedOptionsProgress.value * 8,
   }));
 
-  const aspectRatios = ["4:3", "3:2", "16:9", "3:4", "1:1", "4:5", "2:3", "9:16"];
-
   const getAspectRatioIcon = (ratio: string) => {
     switch (ratio) {
       case "16:9":
@@ -302,12 +440,18 @@ export default function ImagesScreen() {
         return "rectangle.portrait";
       case "2:3":
         return "rectangle.portrait";
+      case "21:9":
+        return "rectangle";
+      case "5:4":
+        return "rectangle";
       default:
         return "rectangle";
     }
   };
 
-  const aspectRatioActions = aspectRatios.map((ratio) => ({
+  // Use model-specific aspect ratios
+  const modelAspectRatios = getModelAspectRatios(selectedModelId);
+  const aspectRatioActions = modelAspectRatios.map((ratio) => ({
     id: ratio,
     title: ratio,
     image: getAspectRatioIcon(ratio),
@@ -321,31 +465,110 @@ export default function ImagesScreen() {
     }
   };
 
-  const handleImageSourceAction = async (event: { nativeEvent: { event: string } }) => {
+  // Check if model supports multiple images
+  const supportsMultipleImages = modelSupportsMultipleImages(selectedModelId);
+  const isKlingO1 = isKlingO1Model(selectedModelId);
+
+  // Handle image source menu action (native MenuView)
+  const handleImageSourceMenuAction = async (event: { nativeEvent: { event: string } }) => {
     const action = event.nativeEvent.event;
     if (action === "gallery") {
-      try {
-        const model = getModelById(selectedModelId);
-        const maxSelection = model?.maxAttachments ?? 10;
-        const images = await pickImages({ maxSelection });
-        if (images.length > 0) {
-          setAttachments((prev) => [...prev, ...images].slice(0, maxSelection));
-        }
-      } catch (error) {
-        const message = error instanceof Error ? error.message : "Failed to pick images";
-        Alert.alert("Error", message);
-      }
+      handleSelectFromGallery();
     } else if (action === "assets") {
-      console.log("Open assets");
+      Keyboard.dismiss();
+      assetPickerSheetRef.current?.present();
     }
   };
 
-  const imageSourceActions = [
-    { id: "gallery", title: "Phone Gallery", image: "photo.on.rectangle", imageColor: "#ffffff" },
-    { id: "assets", title: "Assets", image: "folder", imageColor: "#ffffff" },
-  ];
+  // Handle gallery selection
+  const handleSelectFromGallery = async () => {
+    try {
+      const model = getModelById(selectedModelId);
+      const maxSelection = model?.maxAttachments ?? 10;
+      const allowMultiple = supportsMultipleImages;
+      const currentCount = attachments.length;
+      const remainingSlots = maxSelection - currentCount;
 
-  const imageCountActions = [1, 2, 3, 4].map((count) => ({
+      if (remainingSlots <= 0 && supportsMultipleImages) {
+        Alert.alert("Maximum Images", `You can only attach up to ${maxSelection} images`);
+        return;
+      }
+
+      const images = await pickImages({
+        maxSelection: allowMultiple ? remainingSlots : 1,
+        allowsMultipleSelection: allowMultiple,
+      });
+
+      if (images.length > 0) {
+        if (supportsMultipleImages) {
+          // Append to existing attachments
+          const newAttachments = [...attachments, ...images].slice(0, maxSelection);
+          setAttachments(newAttachments);
+          
+          // For Kling O1, auto-add @Image mentions to prompt
+          if (isKlingO1) {
+            const startIndex = attachments.length + 1;
+            const mentions = images.map((_, i) => `@Image${startIndex + i}`).join(" ");
+            setPrompt((prev) => {
+              if (prev.trim()) {
+                return `${prev} ${mentions} `;
+              }
+              return `${mentions} `;
+            });
+          }
+        } else {
+          // Replace single image
+          setAttachments(images.slice(0, 1));
+        }
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to pick images";
+      Alert.alert("Error", message);
+    }
+  };
+
+  // Handle asset selection
+  const handleSelectFromAssets = (selectedImages: { url: string; uri: string }[]) => {
+    if (selectedImages.length === 0) return;
+
+    const model = getModelById(selectedModelId);
+    const maxSelection = model?.maxAttachments ?? 10;
+
+    // Convert asset URLs to SelectedImage format
+    const newImages: SelectedImage[] = selectedImages.map((img) => ({
+      uri: img.url,
+      url: img.url,
+      width: 0,
+      height: 0,
+      isFromAssets: true,
+    } as SelectedImage & { url?: string; isFromAssets?: boolean }));
+
+    if (supportsMultipleImages) {
+      // Append to existing attachments
+      const newAttachments = [...attachments, ...newImages].slice(0, maxSelection);
+      setAttachments(newAttachments);
+      
+      // For Kling O1, auto-add @Image mentions to prompt
+      if (isKlingO1) {
+        const startIndex = attachments.length + 1;
+        const mentions = newImages.map((_, i) => `@Image${startIndex + i}`).join(" ");
+        setPrompt((prev) => {
+          if (prev.trim()) {
+            return `${prev} ${mentions} `;
+          }
+          return `${mentions} `;
+        });
+      }
+    } else {
+      // Replace single image
+      setAttachments(newImages.slice(0, 1));
+    }
+  };
+
+  // Generate image count options based on model's maxImages
+  const maxImagesForModel = getMaxImages(selectedModelId);
+  const imageCountOptions = Array.from({ length: maxImagesForModel }, (_, i) => i + 1);
+  const imageCountActions = imageCountOptions.map((count) => ({
     id: count.toString(),
     title: `${count} ${count === 1 ? "Image" : "Images"}`,
     image: "photo",
@@ -391,18 +614,42 @@ export default function ImagesScreen() {
         if (!token) {
           throw new Error("Authentication required");
         }
-        const uploaded = await uploadAttachments(
-          token,
-          attachments.map((a) => a.uri)
-        );
-        attachmentUrls = uploaded.map((u) => ({ url: u.url }));
+
+        // Separate asset images (already have URLs) from gallery images (need upload)
+        const assetImages = attachments.filter((a) => a.isFromAssets && a.url);
+        const galleryImages = attachments.filter((a) => !a.isFromAssets || !a.url);
+
+        // Upload gallery images
+        let uploadedUrls: Array<{ url: string }> = [];
+        if (galleryImages.length > 0) {
+          const uploaded = await uploadAttachments(
+            token,
+            galleryImages.map((a) => a.uri)
+          );
+          uploadedUrls = uploaded.map((u) => ({ url: u.url }));
+        }
+
+        // Combine asset URLs (in order) with uploaded URLs
+        // Maintain original order by rebuilding the array
+        attachmentUrls = attachments.map((a) => {
+          if (a.isFromAssets && a.url) {
+            return { url: a.url };
+          }
+          // Find the uploaded URL for this gallery image
+          const galleryIndex = galleryImages.indexOf(a);
+          return uploadedUrls[galleryIndex];
+        });
+
         setIsUploadingAttachments(false);
       }
+
+      // Get effective model ID (switches to edit model if attachments present)
+      const effectiveModelId = getEffectiveModelId(selectedModelId, attachments.length > 0);
 
       // Start generation
       const result = await generate({
         prompt: prompt.trim(),
-        modelId: selectedModelId,
+        modelId: effectiveModelId,
         aspectRatio: selectedAspectRatio,
         numImages: numberOfImages,
         attachmentImages: attachmentUrls,
@@ -429,13 +676,19 @@ export default function ImagesScreen() {
     }
   };
 
+  // Validate Kling O1 @Image mentions
+  const klingO1Validation = isKlingO1 
+    ? validateKlingO1Prompt(prompt, attachments.length)
+    : { valid: true };
+
   // Check if generate button should be enabled
   const canGenerate =
     prompt.trim().length > 0 &&
     !isGenerating &&
     !isUploadingAttachments &&
     credits >= estimatedCost &&
-    (!requiresAttachment || attachments.length > 0);
+    (!requiresAttachment || attachments.length > 0) &&
+    klingO1Validation.valid;
 
   return (
     <SessionsDrawer ref={drawerRef} currentScreen="image">
@@ -519,7 +772,7 @@ export default function ImagesScreen() {
         {/* Main Content - Scrollable */}
         <Animated.ScrollView 
           className="flex-1" 
-          contentContainerStyle={(!currentSessionId || !generations || generations.length === 0) ? { alignItems: 'center', justifyContent: 'center', flexGrow: 1, paddingBottom: 280 } : { paddingHorizontal: 20, paddingTop: 70, paddingBottom: 280 }}
+          contentContainerStyle={(!currentSessionId || !generations || generations.length === 0) && !isGenerating ? { alignItems: 'center', justifyContent: 'center', flexGrow: 1, paddingBottom: 280 } : { paddingHorizontal: 20, paddingTop: 70, paddingBottom: 280 }}
           showsVerticalScrollIndicator={false}
           bounces={true}
           onScroll={scrollHandler}
@@ -529,6 +782,75 @@ export default function ImagesScreen() {
             <View className="items-center justify-center py-20">
               <ActivityIndicator size="large" color="#a855f7" />
               <Text className="text-gray-500 text-sm mt-3">Loading...</Text>
+            </View>
+          ) : isGenerating && (!generations || generations.length === 0) ? (
+            // Show skeleton when generating in a new session (no generations yet)
+            <View>
+              {/* Prompt preview */}
+              <View className="bg-neutral-800 rounded-3xl px-4 py-3 mb-2 self-end" style={{ maxWidth: '90%' }}>
+                <Text className="text-white text-base text-center" numberOfLines={7}>
+                  {prompt}
+                </Text>
+              </View>
+              {/* Model Badge */}
+              <View className="flex-row items-center justify-end mb-3">
+                <View className="flex-row items-center bg-neutral-800 rounded-full px-3 py-1.5">
+                  <Ionicons name="image-outline" size={14} color="#fff" />
+                  <Text className="text-white text-xs ml-1.5">{selectedModelLabel}</Text>
+                </View>
+              </View>
+              {/* Generation Header */}
+              <View className="flex-row items-center mb-3">
+                <Image
+                  source={require("../../assets/logo.png")}
+                  style={{ width: 32, height: 32 }}
+                  contentFit="contain"
+                />
+                <ShimmerText text="Generating..." />
+              </View>
+              {/* Skeleton */}
+              {numberOfImages === 1 ? (
+                <AutoSkeletonView 
+                  isLoading={true} 
+                  defaultRadius={16}
+                  gradientColors={["#1a1a1a", "#2a2a2a"]}
+                >
+                  <View
+                    style={{ 
+                      width: IMAGE_WIDTH, 
+                      height: Math.min(IMAGE_WIDTH / parseAspectRatio(selectedAspectRatio), IMAGE_WIDTH * 1.3), 
+                      backgroundColor: "#1a1a1a", 
+                      borderRadius: 16 
+                    }}
+                  />
+                </AutoSkeletonView>
+              ) : (
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  scrollEnabled={false}
+                  contentContainerStyle={{ paddingHorizontal: 20 }}
+                >
+                  {Array.from({ length: numberOfImages }).map((_, idx) => (
+                    <AutoSkeletonView 
+                      key={idx}
+                      isLoading={true} 
+                      defaultRadius={16}
+                      gradientColors={["#1a1a1a", "#2a2a2a"]}
+                    >
+                      <View
+                        style={{
+                          width: MULTI_IMAGE_WIDTH,
+                          height: MULTI_IMAGE_WIDTH / parseAspectRatio(selectedAspectRatio),
+                          backgroundColor: "#1a1a1a",
+                          borderRadius: 16,
+                          marginRight: 12,
+                        }}
+                      />
+                    </AutoSkeletonView>
+                  ))}
+                </ScrollView>
+              )}
             </View>
           ) : !currentSessionId || !generations || generations.length === 0 ? (
             <>
@@ -828,7 +1150,40 @@ export default function ImagesScreen() {
               overflow: 'hidden',
             }}
           >
-            <View className="pt-5 pb-3 px-4" style={{ backgroundColor: 'rgba(30, 30, 30, 0.7)' }}>
+            <View className="pt-3 pb-3 px-4" style={{ backgroundColor: 'rgba(30, 30, 30, 0.7)' }}>
+              {/* Attachments Preview - Above TextInput */}
+              <Animated.View style={attachmentsAnimatedStyle}>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 12 }}>
+                  {attachments.map((attachment, index) => (
+                    <View key={index} className="mr-2 relative">
+                      <Image
+                        source={attachment.uri}
+                        style={{ width: 60, height: 60, borderRadius: 8 }}
+                        contentFit="cover"
+                      />
+                      {/* Show @Image index for Kling O1 */}
+                      {isKlingO1 && (
+                        <View 
+                          className="absolute bottom-1 left-1 rounded px-1.5 py-0.5"
+                          style={{ backgroundColor: "rgba(0,0,0,0.7)" }}
+                        >
+                          <Text className="text-white text-[10px] font-medium">
+                            @Image{index + 1}
+                          </Text>
+                        </View>
+                      )}
+                      <Pressable
+                        onPress={() => removeAttachment(index)}
+                        className="absolute rounded-full w-5 h-5 items-center justify-center"
+                        style={{ backgroundColor: "rgba(0,0,0,0.7)", top: 2, right: 2 }}
+                      >
+                        <Ionicons name="close" size={12} color="#fff" />
+                      </Pressable>
+                    </View>
+                  ))}
+                </ScrollView>
+              </Animated.View>
+
               <TextInput
                 value={prompt}
                 onChangeText={setPrompt}
@@ -856,28 +1211,30 @@ export default function ImagesScreen() {
                   <Text className="text-white text-xs mr-1">{selectedModelLabel}</Text>
                   <Ionicons name="chevron-down" size={12} color="#fff" />
                 </Pressable>
-                <MenuView
-                  title="Select Aspect Ratio"
-                  onPressAction={handleAspectRatioAction}
-                  actions={aspectRatioActions}
-                >
-                  <Pressable
-                    className="flex-row items-center rounded-full px-2.5 mr-2 active:opacity-70"
-                    style={{ backgroundColor: "#3a3a3a", height: 28 }}
+                {!isAspectRatioDisabled(selectedModelId) && (
+                  <MenuView
+                    title="Select Aspect Ratio"
+                    onPressAction={handleAspectRatioAction}
+                    actions={aspectRatioActions}
                   >
-                    <View
-                      style={{
-                        width: 10,
-                        height: 12,
-                        borderWidth: 1.5,
-                        borderColor: "#fff",
-                        borderRadius: 2,
-                        marginRight: 5,
-                      }}
-                    />
-                    <Text className="text-white text-xs">{selectedAspectRatio}</Text>
-                  </Pressable>
-                </MenuView>
+                    <Pressable
+                      className="flex-row items-center rounded-full px-2.5 mr-2 active:opacity-70"
+                      style={{ backgroundColor: "#3a3a3a", height: 28 }}
+                    >
+                      <View
+                        style={{
+                          width: 10,
+                          height: 12,
+                          borderWidth: 1.5,
+                          borderColor: "#fff",
+                          borderRadius: 2,
+                          marginRight: 5,
+                        }}
+                      />
+                      <Text className="text-white text-xs">{selectedAspectRatio}</Text>
+                    </Pressable>
+                  </MenuView>
+                )}
                 <MenuView
                   title="Number of Images"
                   onPressAction={handleImageCountAction}
@@ -893,15 +1250,20 @@ export default function ImagesScreen() {
                 </MenuView>
               </ScrollView>
               <View style={{ flexDirection: 'row', alignItems: 'center', paddingLeft: 8 }}>
-                <MenuView
-                  title="Select Image Source"
-                  onPressAction={handleImageSourceAction}
-                  actions={imageSourceActions}
-                >
-                  <Pressable className="rounded-full p-2 mr-2 active:opacity-70" style={{ backgroundColor: "#3a3a3a" }}>
-                    <Ionicons name="add" size={20} color="#fff" />
-                  </Pressable>
-                </MenuView>
+                {!isAttachmentDisabled(selectedModelId) && (
+                  <MenuView
+                    title="Select Image Source"
+                    onPressAction={handleImageSourceMenuAction}
+                    actions={[
+                      { id: "assets", title: "Assets", image: "folder", imageColor: "#ffffff" },
+                      { id: "gallery", title: "Phone Gallery", image: "photo.on.rectangle", imageColor: "#ffffff" },
+                    ]}
+                  >
+                    <Pressable className="rounded-full p-2 mr-2 active:opacity-70" style={{ backgroundColor: "#3a3a3a" }}>
+                      <Ionicons name="add" size={20} color="#fff" />
+                    </Pressable>
+                  </MenuView>
+                )}
                 {/* Generate Button - same size as + button */}
                 <Pressable
                   onPress={handleGenerate}
@@ -921,26 +1283,13 @@ export default function ImagesScreen() {
               </View>
             </View>
 
-            {/* Attachments Preview */}
-            {attachments.length > 0 && (
-              <View className="mt-3">
-                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                  {attachments.map((attachment, index) => (
-                    <View key={index} className="mr-2 relative">
-                      <Image
-                        source={attachment.uri}
-                        style={{ width: 60, height: 60, borderRadius: 8 }}
-                        contentFit="cover"
-                      />
-                      <Pressable
-                        onPress={() => removeAttachment(index)}
-                        className="absolute -top-1 -right-1 bg-red-500 rounded-full w-5 h-5 items-center justify-center"
-                      >
-                        <Ionicons name="close" size={12} color="#fff" />
-                      </Pressable>
-                    </View>
-                  ))}
-                </ScrollView>
+            {/* Kling O1 Validation Error */}
+            {isKlingO1 && !klingO1Validation.valid && (
+              <View className="mt-2 flex-row items-center">
+                <Ionicons name="warning-outline" size={14} color="#f59e0b" />
+                <Text className="text-amber-500 text-xs ml-1">
+                  {klingO1Validation.message}
+                </Text>
               </View>
             )}
 
@@ -971,9 +1320,19 @@ export default function ImagesScreen() {
           if (!newAllowedRatios.includes(selectedAspectRatio)) {
             setSelectedAspectRatio(newAllowedRatios[0]);
           }
-          // Clear attachments when switching to non-edit model
-          if (!modelRequiresAttachment(modelId)) {
+          // Reset numberOfImages if it exceeds new model's max
+          const newMaxImages = getMaxImages(modelId);
+          if (numberOfImages > newMaxImages) {
+            setNumberOfImages(newMaxImages);
+          }
+          // Clear attachments when switching to attachment-disabled model
+          if (isAttachmentDisabled(modelId)) {
             setAttachments([]);
+          }
+          // Reset resolution if switching to model with different options
+          const newResOptions = getResolutionOptions(modelId);
+          if (newResOptions && !newResOptions.includes(selectedResolution)) {
+            setSelectedResolution(newResOptions[0]);
           }
         }} 
       />
@@ -983,6 +1342,15 @@ export default function ImagesScreen() {
         ref={imageDetailSheetRef}
         image={selectedImage}
         onClose={() => setSelectedImage(null)}
+      />
+
+      {/* Asset Picker Sheet */}
+      <AssetPickerSheet
+        ref={assetPickerSheetRef}
+        maxSelection={currentModel?.maxAttachments ?? 10}
+        allowMultiple={supportsMultipleImages}
+        onSelectImages={handleSelectFromAssets}
+        onClose={() => {}}
       />
       </View>
     </SessionsDrawer>

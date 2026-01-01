@@ -13,8 +13,8 @@ import { useFavorites, makeFavoriteKey } from "./useFavorites";
 // Keep this in sync with web AssetsView - session types that contain assets
 const ASSET_SESSION_TYPES = ["image", "video", "edit", "assets"];
 // Initial batch size for faster first load, then load more on scroll
-const INITIAL_SESSIONS_TO_LOAD = 10;
-const SESSIONS_PER_PAGE = 10;
+const INITIAL_SESSIONS_TO_LOAD = 5;
+const SESSIONS_PER_PAGE = 30;
 
 export interface AssetItem {
   id: string;
@@ -54,6 +54,7 @@ export function useAssets(): UseAssetsReturn {
   const { isConnected, isInternetReachable } = useNetworkStatus();
   const isOnline = isConnected && isInternetReachable !== false;
   const isSyncing = useRef(false);
+  const isLoadingMoreRef = useRef(false);
   const convex = useConvex();
 
   // Local state for generations cache
@@ -110,16 +111,17 @@ export function useAssets(): UseAssetsReturn {
       })
     );
     
-    // Update cache with all results
-    const newCache: Record<string, any[]> = { ...generationsCache };
-    results.forEach(({ sessionId, generations }) => {
-      newCache[sessionId] = generations;
-      loadedSessionsRef.current.add(sessionId);
+    // Use functional update to avoid stale closure and unnecessary re-renders
+    setGenerationsCache((prevCache) => {
+      const newCache = { ...prevCache };
+      results.forEach(({ sessionId, generations }) => {
+        newCache[sessionId] = generations;
+        loadedSessionsRef.current.add(sessionId);
+      });
+      return newCache;
     });
-    
-    setGenerationsCache(newCache);
     setIsLoadingGenerations(false);
-  }, [convex, generationsCache]);
+  }, [convex]);
 
   // Load generations when sessions change
   useEffect(() => {
@@ -128,7 +130,7 @@ export function useAssets(): UseAssetsReturn {
     // Find sessions that haven't been loaded yet
     const unloadedSessionIds = assetSessions
       .map((s: any) => s._id as string)
-      .filter((id) => !loadedSessionsRef.current.has(id));
+      .filter((id: string) => !loadedSessionsRef.current.has(id));
     
     if (unloadedSessionIds.length > 0) {
       fetchGenerationsForSessions(unloadedSessionIds);
@@ -202,10 +204,12 @@ export function useAssets(): UseAssetsReturn {
     const hasGenerations = Object.keys(generationsCache).length > 0;
     if (!hasGenerations) return null;
 
-    const items: CachedAssetItem[] = [];
+    // Collect items per session first, then sort within each session
+    const sessionItems: Map<string, CachedAssetItem[]> = new Map();
 
     assetSessions.forEach((session: any) => {
       const sessionGenerations = generationsCache[session._id] || [];
+      const items: CachedAssetItem[] = [];
       
       sessionGenerations.forEach((gen: any) => {
         // Add images
@@ -254,12 +258,21 @@ export function useAssets(): UseAssetsReturn {
           });
         }
       });
+
+      // Sort items within this session by creation time (newest first)
+      items.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+      sessionItems.set(session._id, items);
     });
 
-    // Sort by creation time, newest first
-    items.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+    // Flatten in session order (sessions are already sorted by backend)
+    // This maintains stable order during pagination - new sessions append at end
+    const allItems: CachedAssetItem[] = [];
+    assetSessions.forEach((session: any) => {
+      const items = sessionItems.get(session._id) || [];
+      allItems.push(...items);
+    });
 
-    return items;
+    return allItems;
   }, [assetSessions, generationsCache, favoriteSet]);
 
   // Update cache when server data changes
@@ -485,20 +498,22 @@ export function useAssets(): UseAssetsReturn {
 
   // Load more sessions (pagination)
   const loadMore = useCallback(async () => {
-    if (!hasMore || isLoadingMore || !isOnline) return;
+    // Use ref for immediate check to prevent duplicate calls
+    if (!hasMore || isLoadingMoreRef.current || !isOnline) return;
     
+    isLoadingMoreRef.current = true;
     setIsLoadingMore(true);
     
     // Get the next batch of session IDs
     const nextSessions = allAssetSessions.slice(sessionsLimit, sessionsLimit + SESSIONS_PER_PAGE);
     const nextSessionIds = nextSessions
       .map((s: any) => s._id as string)
-      .filter((id) => !loadedSessionsRef.current.has(id));
+      .filter((id: string) => !loadedSessionsRef.current.has(id));
     
     if (nextSessionIds.length > 0) {
       // Fetch generations for new sessions
       const results = await Promise.all(
-        nextSessionIds.map(async (sessionId) => {
+        nextSessionIds.map(async (sessionId: string) => {
           try {
             const generations = await convex.query(
               api.sessions.getSessionGenerations,
@@ -512,20 +527,22 @@ export function useAssets(): UseAssetsReturn {
         })
       );
       
-      // Update cache with results
-      const newCache: Record<string, any[]> = { ...generationsCache };
-      results.forEach(({ sessionId, generations }) => {
-        newCache[sessionId] = generations;
-        loadedSessionsRef.current.add(sessionId);
+      // Use functional update to avoid stale closure
+      setGenerationsCache((prevCache) => {
+        const newCache = { ...prevCache };
+        results.forEach(({ sessionId, generations }: { sessionId: string; generations: any[] }) => {
+          newCache[sessionId] = generations;
+          loadedSessionsRef.current.add(sessionId);
+        });
+        return newCache;
       });
-      
-      setGenerationsCache(newCache);
     }
     
     // Increase the limit to show more sessions
     setSessionsLimit((prev) => prev + SESSIONS_PER_PAGE);
     setIsLoadingMore(false);
-  }, [hasMore, isLoadingMore, isOnline, allAssetSessions, sessionsLimit, convex, generationsCache]);
+    isLoadingMoreRef.current = false;
+  }, [hasMore, isOnline, allAssetSessions, sessionsLimit, convex]);
 
   return {
     assets: visibleAssets,

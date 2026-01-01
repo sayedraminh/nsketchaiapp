@@ -4,7 +4,7 @@ import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
 import { BottomSheetModal, BottomSheetFlatList, BottomSheetBackdrop } from "@gorhom/bottom-sheet";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { IMAGE_MODELS, getSortedModels, ImageModelId, ImageModelMeta } from "../config/imageModels";
+import { IMAGE_MODELS, getSortedModels, ImageModelId, ImageModelMeta, isUnifiedModel } from "../config/imageModels";
 
 interface Badge {
   type: "new" | "edit" | "credits" | "resolution" | "quality";
@@ -45,7 +45,8 @@ function modelMetaToItem(meta: ImageModelMeta): ModelItem {
     badges.push({ type: "new" });
   }
   
-  if (meta.requiresAttachment) {
+  // Show Edit badge for models that require attachment OR unified models (have editModelId)
+  if (meta.requiresAttachment || isUnifiedModel(meta.id)) {
     badges.push({ type: "edit" });
   }
   
