@@ -29,6 +29,8 @@ export interface SelectedImage {
   type?: string;
   fileName?: string;
   fileSize?: number;
+  url?: string; // For images selected from assets (already uploaded)
+  isFromAssets?: boolean; // Flag to skip upload for asset images
 }
 
 /**

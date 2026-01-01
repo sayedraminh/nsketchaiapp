@@ -9,7 +9,20 @@ import AssetsScreen from "../screens/AssetsScreen";
 
 export type TabParamList = {
   Home: undefined;
-  Images: { sessionId?: string; sessionTitle?: string } | undefined;
+  Images: { 
+    sessionId?: string; 
+    sessionTitle?: string;
+    // Incoming generation data from Home screen
+    incoming?: {
+      prompt: string;
+      modelId: string;
+      modelLabel: string;
+      aspectRatio: string;
+      numImages: number;
+      imageUrls?: string[];
+      autoGenerate?: boolean;
+    };
+  } | undefined;
   Videos: undefined;
   Enhancer: undefined;
   Assets: undefined;
@@ -37,6 +50,7 @@ export default function TabNavigator() {
         component={HomeScreen}
         options={{
           tabBarIcon: () => require("../../assets/homenav.png"),
+          tabBarLabel: "",
         }}
       />
       <Tab.Screen
@@ -44,6 +58,7 @@ export default function TabNavigator() {
         component={ImagesScreen}
         options={{
           tabBarIcon: () => require("../../assets/imagenav.png"),
+          tabBarLabel: "",
         }}
       />
       <Tab.Screen
@@ -51,6 +66,7 @@ export default function TabNavigator() {
         component={VideosScreen}
         options={{
           tabBarIcon: () => require("../../assets/videonav.png"),
+          tabBarLabel: "",
         }}
       />
       <Tab.Screen
@@ -58,6 +74,7 @@ export default function TabNavigator() {
         component={EnhancerScreen}
         options={{
           tabBarIcon: () => require("../../assets/enhancernav.png"),
+          tabBarLabel: "",
         }}
       />
       <Tab.Screen
@@ -65,6 +82,7 @@ export default function TabNavigator() {
         component={AssetsScreen}
         options={{
           tabBarIcon: () => require("../../assets/assetnav.png"),
+          tabBarLabel: "",
         }}
       />
     </Tab.Navigator>

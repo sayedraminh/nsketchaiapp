@@ -1,5 +1,5 @@
 import React, { useState, useRef, useCallback } from "react";
-import { View, Text, Pressable, ScrollView, TextInput, TouchableWithoutFeedback, Keyboard, ActionSheetIOS, Platform, Modal, LayoutAnimation, UIManager, Animated as RNAnimated } from "react-native";
+import { View, Text, Pressable, ScrollView, TextInput, TouchableWithoutFeedback, Keyboard, ActionSheetIOS, Platform, Modal, LayoutAnimation, UIManager, Animated as RNAnimated, Alert } from "react-native";
 import { Image } from "expo-image";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
@@ -15,10 +15,15 @@ import { BottomSheetModal } from "@gorhom/bottom-sheet";
 import ModelSelectorSheet from "../components/ModelSelectorSheet";
 import VideoModelSelectorSheet from "../components/VideoModelSelectorSheet";
 import SessionsDrawer, { SessionsDrawerRef } from "../components/SessionsDrawer";
+import AssetPickerSheet from "../components/AssetPickerSheet";
 import { useUser } from "@clerk/clerk-expo";
 import { useCredits } from "../hooks/useCredits";
+import { ImageModelId, AspectRatio, getModelAspectRatios, isAttachmentDisabled } from "../config/imageModels";
+import { TabParamList } from "../navigation/TabNavigator";
 
-type NavigationProp = NativeStackNavigationProp<AppStackParamList>;
+type NavigationProp = NativeStackNavigationProp<AppStackParamList> & {
+  navigate: (screen: keyof TabParamList, params?: TabParamList[keyof TabParamList]) => void;
+};
 
 // Enable LayoutAnimation on Android
 if (Platform.OS === "android" && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -31,15 +36,19 @@ export default function HomeScreen() {
   const { credits, isLoading: creditsLoading } = useCredits();
   const drawerRef = useRef<SessionsDrawerRef>(null);
   const [prompt, setPrompt] = useState("");
-  const [selectedAspectRatio, setSelectedAspectRatio] = useState("2:3");
+  const [selectedAspectRatio, setSelectedAspectRatio] = useState<AspectRatio>("2:3");
   const [selectedMode, setSelectedMode] = useState<"Image" | "Video">("Image");
   const [imagePickerVisible, setImagePickerVisible] = useState(false);
   const [numberOfImages, setNumberOfImages] = useState(1);
   const [selectedModel, setSelectedModel] = useState("Nano Banana");
+  const [selectedModelId, setSelectedModelId] = useState<ImageModelId>("img-nano-banana");
   const [selectedVideoModel, setSelectedVideoModel] = useState("Kandinsky 5");
   const [showAdvancedOptions, setShowAdvancedOptions] = useState(false);
+  const [attachedImages, setAttachedImages] = useState<{ uri: string; url?: string }[]>([]);
+  const assetPickerSheetRef = useRef<BottomSheetModal>(null);
 
   const advancedOptionsProgress = useSharedValue(0);
+  const attachedImagesProgress = useSharedValue(0);
   
   const toggleAdvancedOptions = useCallback(() => {
     const newValue = !showAdvancedOptions;
@@ -60,6 +69,20 @@ export default function HomeScreen() {
     marginTop: advancedOptionsProgress.value * 8,
   }));
 
+  const attachedImagesStyle = useAnimatedStyle(() => ({
+    opacity: attachedImagesProgress.value,
+    height: attachedImagesProgress.value * 80,
+    overflow: 'hidden' as const,
+  }));
+
+  // Animate attached images section when images change
+  React.useEffect(() => {
+    attachedImagesProgress.value = withTiming(attachedImages.length > 0 ? 1 : 0, {
+      duration: 250,
+      easing: Easing.out(Easing.cubic),
+    });
+  }, [attachedImages.length]);
+
   const scrollY = useSharedValue(0);
   const modelSheetRef = useRef<BottomSheetModal>(null);
   const videoModelSheetRef = useRef<BottomSheetModal>(null);
@@ -78,7 +101,8 @@ export default function HomeScreen() {
     },
   });
 
-  const aspectRatios = ["4:3", "3:2", "16:9", "3:4", "1:1", "4:5", "2:3", "9:16"];
+  // Get model-specific aspect ratios
+  const modelAspectRatios = getModelAspectRatios(selectedModelId);
 
   const getAspectRatioIcon = (ratio: string) => {
     switch (ratio) {
@@ -126,7 +150,7 @@ export default function HomeScreen() {
     }
   };
 
-  const aspectRatioActions = aspectRatios.map((ratio) => ({
+  const aspectRatioActions = modelAspectRatios.map((ratio) => ({
     id: ratio,
     title: ratio,
     image: getAspectRatioIcon(ratio),
@@ -134,8 +158,10 @@ export default function HomeScreen() {
   }));
 
   const handleAspectRatioAction = (event: { nativeEvent: { event: string } }) => {
-    const ratio = event.nativeEvent.event;
-    setSelectedAspectRatio(ratio);
+    const ratio = event.nativeEvent.event as AspectRatio;
+    if (modelAspectRatios.includes(ratio)) {
+      setSelectedAspectRatio(ratio);
+    }
   };
 
   const handleMenuAction = (event: { nativeEvent: { event: string } }) => {
@@ -153,16 +179,75 @@ export default function HomeScreen() {
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: false,
+        allowsMultipleSelection: true,
+        selectionLimit: 10,
         quality: 1,
       });
-      if (!result.canceled) {
-        // Handle selected image
-        console.log("Selected image from gallery:", result.assets[0].uri);
+      if (!result.canceled && result.assets) {
+        const newImages = result.assets.map(asset => ({ uri: asset.uri }));
+        setAttachedImages(prev => [...prev, ...newImages].slice(0, 10));
       }
     } else if (action === "assets") {
-      // Navigate to assets screen or show assets picker
-      console.log("Open assets");
+      Keyboard.dismiss();
+      assetPickerSheetRef.current?.present();
     }
+  };
+
+  const handleSelectFromAssets = (selectedImages: { url: string; uri: string }[]) => {
+    if (selectedImages.length === 0) return;
+    const newImages = selectedImages.map(img => ({ uri: img.url, url: img.url }));
+    setAttachedImages(prev => [...prev, ...newImages].slice(0, 10));
+  };
+
+  const removeAttachedImage = (index: number) => {
+    setAttachedImages(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const handleModelSelect = (modelId: ImageModelId, modelLabel: string) => {
+    setSelectedModel(modelLabel);
+    setSelectedModelId(modelId);
+    
+    // Reset aspect ratio if current one isn't supported by new model
+    const newModelRatios = getModelAspectRatios(modelId);
+    if (!newModelRatios.includes(selectedAspectRatio)) {
+      setSelectedAspectRatio(newModelRatios[0]);
+    }
+    
+    // Clear attachments when switching to attachment-disabled model
+    if (isAttachmentDisabled(modelId)) {
+      setAttachedImages([]);
+    }
+  };
+
+  const handleHomeGenerate = () => {
+    if (!prompt.trim()) {
+      Alert.alert("Error", "Please enter a prompt to generate");
+      return;
+    }
+
+    Keyboard.dismiss();
+
+    // Collect attached image URLs
+    const imageUrls = attachedImages
+      .map(img => img.url || img.uri)
+      .filter(Boolean);
+
+    // Navigate to Images tab with incoming generation data
+    navigation.navigate("Images", {
+      incoming: {
+        prompt: prompt.trim(),
+        modelId: selectedModelId,
+        modelLabel: selectedModel,
+        aspectRatio: selectedAspectRatio,
+        numImages: numberOfImages,
+        imageUrls: imageUrls.length > 0 ? imageUrls : undefined,
+        autoGenerate: true,
+      },
+    });
+
+    // Clear the prompt and attachments after navigating
+    setPrompt("");
+    setAttachedImages([]);
   };
 
   const imageSourceActions = [
@@ -227,7 +312,7 @@ export default function HomeScreen() {
     { id: "image", icon: "image", label: "Image", gradient: ["#06b6d4", "#3b82f6", "#6366f1"], customImage: require("../../assets/imgnewgrad.png") },
     { id: "video", icon: "videocam", label: "Video", gradient: ["#f59e0b", "#fb923c", "#f97316"], customImage: require("../../assets/vidnewgrad.png") },
     { id: "edit", icon: "color-wand", label: "Edit", gradient: ["#a855f7", "#d946ef", "#ec4899"] },
-    { id: "enhance", icon: "sparkles", label: "Enhance", gradient: ["#6b7280", "#9ca3af", "#d1d5db"] },
+    { id: "enhance", icon: "sparkles", label: "Enhance", gradient: ["#6b7280", "#9ca3af", "#d1d5db"], customImage: require("../../assets/enhancergrad.png") },
   ];
 
   const styleCategories = [
@@ -395,7 +480,34 @@ export default function HomeScreen() {
               </Text>
 
               {/* Prompt Input Box */}
-              <View className="rounded-3xl pt-5 pb-2 px-3 mb-4" style={{ backgroundColor: "#1e1e1e" }}>
+              <View className="rounded-3xl pt-4 pb-2 px-3 mb-4" style={{ backgroundColor: "#1e1e1e" }}>
+                {/* Attached Images Preview - horizontal scroll at top with animation */}
+                <Animated.View style={attachedImagesStyle}>
+                  <ScrollView 
+                    horizontal 
+                    showsHorizontalScrollIndicator={false}
+                    style={{ marginBottom: 12 }}
+                    contentContainerStyle={{ paddingHorizontal: 4 }}
+                  >
+                    {attachedImages.map((img, index) => (
+                      <View key={index} className="relative mr-2">
+                        <Image
+                          source={{ uri: img.uri }}
+                          style={{ width: 64, height: 64, borderRadius: 12 }}
+                          contentFit="cover"
+                        />
+                        <Pressable
+                          onPress={() => removeAttachedImage(index)}
+                          className="absolute rounded-full w-5 h-5 items-center justify-center"
+                          style={{ backgroundColor: "rgba(0,0,0,0.7)", top: 2, right: 2 }}
+                        >
+                          <Ionicons name="close" size={12} color="#fff" />
+                        </Pressable>
+                      </View>
+                    ))}
+                  </ScrollView>
+                </Animated.View>
+
                 <TextInput
                   value={prompt}
                   onChangeText={setPrompt}
@@ -476,17 +588,23 @@ export default function HomeScreen() {
                     </Pressable>
                   </ScrollView>
                   <Animated.View style={[{ flexDirection: 'row', alignItems: 'center', paddingLeft: 8 }, actionButtonsStyle]}>
-                    <MenuView
-                      title="Select Image Source"
-                      onPressAction={handleImageSourceAction}
-                      actions={imageSourceActions}
+                    {!isAttachmentDisabled(selectedModelId) && (
+                      <MenuView
+                        title="Select Image Source"
+                        onPressAction={handleImageSourceAction}
+                        actions={imageSourceActions}
+                      >
+                        <Pressable className="rounded-full p-2 mr-2 active:opacity-70" style={{ backgroundColor: "#3a3a3a" }}>
+                          <Ionicons name="add" size={20} color="#fff" />
+                        </Pressable>
+                      </MenuView>
+                    )}
+                    <Pressable 
+                      onPress={handleHomeGenerate}
+                      className="rounded-full p-2 active:opacity-70" 
+                      style={{ backgroundColor: prompt.trim() ? "#a855f7" : "#3a3a3a" }}
                     >
-                      <Pressable className="rounded-full p-2 mr-2 active:opacity-70" style={{ backgroundColor: "#3a3a3a" }}>
-                        <Ionicons name="add" size={20} color="#fff" />
-                      </Pressable>
-                    </MenuView>
-                    <Pressable className="rounded-full p-2 active:opacity-70" style={{ backgroundColor: "#3a3a3a" }}>
-                      <Ionicons name="sparkles-outline" size={18} color="#fff" />
+                      <Ionicons name="arrow-up" size={18} color="#fff" />
                     </Pressable>
                   </Animated.View>
                 </View>
@@ -644,8 +762,16 @@ export default function HomeScreen() {
       </Modal>
 
       {/* Model Selector Bottom Sheet */}
-      <ModelSelectorSheet ref={modelSheetRef} onSelectModel={setSelectedModel} />
+      <ModelSelectorSheet ref={modelSheetRef} onSelectModel={handleModelSelect} />
       <VideoModelSelectorSheet ref={videoModelSheetRef} onSelectModel={setSelectedVideoModel} />
+      
+      {/* Asset Picker Bottom Sheet */}
+      <AssetPickerSheet 
+        ref={assetPickerSheetRef} 
+        onSelectImages={handleSelectFromAssets}
+        onClose={() => {}}
+        maxSelection={10 - attachedImages.length}
+      />
       </View>
     </SessionsDrawer>
   );

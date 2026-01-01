@@ -16,13 +16,9 @@ export type ImageModelId =
   | "img-seedream-v4-edit"
   | "img-seedream-v45"
   | "img-seedream-v45-edit"
-  | "img-flux-kontext-pro"
-  | "img-gpt-image-1"
-  | "img-gpt-image-1-edit"
   | "img-gpt-image-1-5"
   | "img-gpt-image-1-5-edit"
   | "img-hunyuan-v21"
-  | "img-hunyuan-v3"
   | "img-wan-v22-a14b"
   | "img-reve"
   | "img-reve-edit"
@@ -63,8 +59,8 @@ export const VALID_ASPECT_RATIOS: AspectRatio[] = [
   "4:5",
 ];
 
-// Standard aspect ratios (subset used by most models)
-export const STANDARD_ASPECT_RATIOS: AspectRatio[] = [
+// Default aspect ratios (most models)
+export const DEFAULT_ASPECT_RATIOS: AspectRatio[] = [
   "1:1",
   "4:3",
   "3:4",
@@ -72,8 +68,41 @@ export const STANDARD_ASPECT_RATIOS: AspectRatio[] = [
   "9:16",
 ];
 
-// GPT-only aspect ratios
-export const GPT_ASPECT_RATIOS: AspectRatio[] = ["1:1", "4:3", "3:4"];
+// Full aspect ratios (Nano Banana family)
+export const FULL_ASPECT_RATIOS: AspectRatio[] = [
+  "21:9",
+  "1:1",
+  "4:3",
+  "3:2",
+  "2:3",
+  "5:4",
+  "4:5",
+  "3:4",
+  "16:9",
+  "9:16",
+];
+
+// Restricted aspect ratios (GPT/Azure + GPT-1.5)
+export const RESTRICTED_ASPECT_RATIOS: AspectRatio[] = ["1:1", "4:3", "3:4"];
+
+// Kling O1 aspect ratios
+export const KLING_O1_ASPECT_RATIOS: AspectRatio[] = [
+  "16:9",
+  "9:16",
+  "1:1",
+  "4:3",
+  "3:4",
+  "3:2",
+  "2:3",
+  "21:9",
+];
+
+// Legacy aliases for compatibility
+export const STANDARD_ASPECT_RATIOS = DEFAULT_ASPECT_RATIOS;
+export const GPT_ASPECT_RATIOS = RESTRICTED_ASPECT_RATIOS;
+
+// Resolution options type
+export type ResolutionOptions = "1K_2K_4K" | "1K_2K" | null;
 
 // Image model metadata
 export interface ImageModelMeta {
@@ -87,16 +116,57 @@ export interface ImageModelMeta {
   minAttachments?: number;
   maxAttachments?: number;
   allowedAspectRatios: AspectRatio[];
+  aspectRatioDisabled?: boolean; // If true, hide aspect ratio selector
+  attachmentDisabled?: boolean; // If true, hide the + button (no attachments allowed)
   supportsResolution?: boolean;
+  resolutionOptions?: ResolutionOptions; // Which resolution options to show
   supportsQuality?: boolean;
   maxImages: number;
   creditCost: number;
   isQueued: boolean; // Whether this model uses queued polling
+  // Unified model: switches to editModelId when attachments are present
+  editModelId?: ImageModelId;
+  isEditVariant?: boolean; // True for edit models that should be hidden from UI
 }
 
 // Complete model registry
 export const IMAGE_MODELS: ImageModelMeta[] = [
   // New models (isNew: true)
+  {
+    id: "img-nano-banana-pro",
+    label: "Nano Banana Pro",
+    company: "Google",
+    description: "Google's new state-of-the-art image generation model (1K/2K/4K)",
+    logo: "googleg",
+    isNew: true,
+    requiresAttachment: false,
+    maxAttachments: 10,
+    allowedAspectRatios: FULL_ASPECT_RATIOS,
+    supportsResolution: true,
+    resolutionOptions: "1K_2K_4K",
+    maxImages: 4,
+    creditCost: 15,
+    isQueued: true,
+    editModelId: "img-nano-banana-pro-edit",
+  },
+  {
+    id: "img-nano-banana-pro-edit",
+    label: "Nano Banana Pro Edit",
+    company: "Google",
+    description: "Google's new state-of-the-art image editing model (1K/2K/4K)",
+    logo: "googleg",
+    isNew: true,
+    requiresAttachment: true,
+    minAttachments: 1,
+    maxAttachments: 10,
+    allowedAspectRatios: FULL_ASPECT_RATIOS,
+    supportsResolution: true,
+    resolutionOptions: "1K_2K_4K",
+    maxImages: 4,
+    creditCost: 15,
+    isQueued: true,
+    isEditVariant: true,
+  },
   {
     id: "img-gpt-image-1-5",
     label: "GPT-Image 1.5",
@@ -105,11 +175,13 @@ export const IMAGE_MODELS: ImageModelMeta[] = [
     logo: "openai",
     isNew: true,
     requiresAttachment: false,
-    allowedAspectRatios: GPT_ASPECT_RATIOS,
+    maxAttachments: 10,
+    allowedAspectRatios: RESTRICTED_ASPECT_RATIOS,
     supportsQuality: true,
     maxImages: 4,
-    creditCost: 5,
+    creditCost: 4,
     isQueued: true,
+    editModelId: "img-gpt-image-1-5-edit",
   },
   {
     id: "img-gpt-image-1-5-edit",
@@ -121,11 +193,12 @@ export const IMAGE_MODELS: ImageModelMeta[] = [
     requiresAttachment: true,
     minAttachments: 1,
     maxAttachments: 10,
-    allowedAspectRatios: GPT_ASPECT_RATIOS,
+    allowedAspectRatios: RESTRICTED_ASPECT_RATIOS,
     supportsQuality: true,
     maxImages: 4,
-    creditCost: 5,
+    creditCost: 4,
     isQueued: true,
+    isEditVariant: true,
   },
   {
     id: "img-flux-2-max",
@@ -136,10 +209,12 @@ export const IMAGE_MODELS: ImageModelMeta[] = [
     logo: "flux",
     isNew: true,
     requiresAttachment: false,
-    allowedAspectRatios: STANDARD_ASPECT_RATIOS,
+    maxAttachments: 10,
+    allowedAspectRatios: DEFAULT_ASPECT_RATIOS,
     maxImages: 4,
-    creditCost: 4,
+    creditCost: 7,
     isQueued: true,
+    editModelId: "img-flux-2-max-edit",
   },
   {
     id: "img-flux-2-max-edit",
@@ -151,10 +226,11 @@ export const IMAGE_MODELS: ImageModelMeta[] = [
     requiresAttachment: true,
     minAttachments: 1,
     maxAttachments: 10,
-    allowedAspectRatios: STANDARD_ASPECT_RATIOS,
+    allowedAspectRatios: DEFAULT_ASPECT_RATIOS,
     maxImages: 4,
-    creditCost: 4,
+    creditCost: 7,
     isQueued: true,
+    isEditVariant: true,
   },
   {
     id: "img-kling-o1",
@@ -167,49 +243,11 @@ export const IMAGE_MODELS: ImageModelMeta[] = [
     requiresAttachment: true,
     minAttachments: 1,
     maxAttachments: 10,
-    allowedAspectRatios: [
-      "16:9",
-      "9:16",
-      "1:1",
-      "4:3",
-      "3:4",
-      "3:2",
-      "2:3",
-      "21:9",
-    ],
+    allowedAspectRatios: KLING_O1_ASPECT_RATIOS,
     supportsResolution: true,
+    resolutionOptions: "1K_2K",
     maxImages: 4,
-    creditCost: 4,
-    isQueued: true,
-  },
-  {
-    id: "img-nano-banana-pro",
-    label: "Nano Banana Pro",
-    company: "Google",
-    description: "Google's new state-of-the-art image generation model (1K/2K/4K)",
-    logo: "googleg",
-    isNew: true,
-    requiresAttachment: false,
-    allowedAspectRatios: VALID_ASPECT_RATIOS,
-    supportsResolution: true,
-    maxImages: 4,
-    creditCost: 4,
-    isQueued: true,
-  },
-  {
-    id: "img-nano-banana-pro-edit",
-    label: "Nano Banana Pro Edit",
-    company: "Google",
-    description: "Google's new state-of-the-art image editing model (1K/2K/4K)",
-    logo: "googleg",
-    isNew: true,
-    requiresAttachment: true,
-    minAttachments: 1,
-    maxAttachments: 10,
-    allowedAspectRatios: VALID_ASPECT_RATIOS,
-    supportsResolution: true,
-    maxImages: 4,
-    creditCost: 4,
+    creditCost: 3,
     isQueued: true,
   },
   {
@@ -220,10 +258,12 @@ export const IMAGE_MODELS: ImageModelMeta[] = [
     logo: "bytedance-color",
     isNew: true,
     requiresAttachment: false,
-    allowedAspectRatios: STANDARD_ASPECT_RATIOS,
+    maxAttachments: 10,
+    allowedAspectRatios: DEFAULT_ASPECT_RATIOS,
     maxImages: 4,
     creditCost: 3,
     isQueued: true,
+    editModelId: "img-seedream-v45-edit",
   },
   {
     id: "img-seedream-v45-edit",
@@ -235,10 +275,11 @@ export const IMAGE_MODELS: ImageModelMeta[] = [
     requiresAttachment: true,
     minAttachments: 1,
     maxAttachments: 10,
-    allowedAspectRatios: STANDARD_ASPECT_RATIOS,
+    allowedAspectRatios: DEFAULT_ASPECT_RATIOS,
     maxImages: 4,
     creditCost: 3,
     isQueued: true,
+    isEditVariant: true,
   },
   // Standard models (isNew: false)
   {
@@ -249,10 +290,12 @@ export const IMAGE_MODELS: ImageModelMeta[] = [
     logo: "googleg",
     isNew: false,
     requiresAttachment: false,
-    allowedAspectRatios: VALID_ASPECT_RATIOS,
+    maxAttachments: 10,
+    allowedAspectRatios: FULL_ASPECT_RATIOS,
     maxImages: 4,
     creditCost: 3,
     isQueued: true,
+    editModelId: "img-nano-banana-edit",
   },
   {
     id: "img-nano-banana-edit",
@@ -264,10 +307,11 @@ export const IMAGE_MODELS: ImageModelMeta[] = [
     requiresAttachment: true,
     minAttachments: 1,
     maxAttachments: 10,
-    allowedAspectRatios: VALID_ASPECT_RATIOS,
+    allowedAspectRatios: FULL_ASPECT_RATIOS,
     maxImages: 4,
     creditCost: 3,
     isQueued: true,
+    isEditVariant: true,
   },
   {
     id: "img-imagen4-preview",
@@ -277,7 +321,8 @@ export const IMAGE_MODELS: ImageModelMeta[] = [
     logo: "googleg",
     isNew: false,
     requiresAttachment: false,
-    allowedAspectRatios: STANDARD_ASPECT_RATIOS,
+    attachmentDisabled: true,
+    allowedAspectRatios: DEFAULT_ASPECT_RATIOS,
     maxImages: 4,
     creditCost: 3,
     isQueued: false, // sync model
@@ -290,23 +335,11 @@ export const IMAGE_MODELS: ImageModelMeta[] = [
     logo: "googleg",
     isNew: false,
     requiresAttachment: false,
-    allowedAspectRatios: VALID_ASPECT_RATIOS,
-    maxImages: 4,
-    creditCost: 4,
-    isQueued: true, // Wavespeed queued
-  },
-  {
-    id: "img-hunyuan-v3",
-    label: "Hunyuan Image 3.0",
-    company: "Tencent",
-    description: "Tencent's latest text-to-image model with fast sync generation",
-    logo: "hunyuan",
-    isNew: false,
-    requiresAttachment: false,
-    allowedAspectRatios: STANDARD_ASPECT_RATIOS,
+    attachmentDisabled: true,
+    allowedAspectRatios: DEFAULT_ASPECT_RATIOS,
     maxImages: 4,
     creditCost: 3,
-    isQueued: false, // sync model
+    isQueued: true, // Wavespeed queued
   },
   {
     id: "img-reve",
@@ -317,25 +350,28 @@ export const IMAGE_MODELS: ImageModelMeta[] = [
     logo: "donereve",
     isNew: false,
     requiresAttachment: false,
+    maxAttachments: 1,
     allowedAspectRatios: STANDARD_ASPECT_RATIOS,
     maxImages: 4,
     creditCost: 3,
     isQueued: false, // sync model
+    editModelId: "img-reve-edit",
   },
   {
     id: "img-reve-edit",
     label: "Reve Edit",
     company: "Reve",
-    description: "Edit and transform images with text prompts (1-10 reference images)",
+    description: "Edit and transform images with text prompts",
     logo: "donereve",
     isNew: false,
     requiresAttachment: true,
     minAttachments: 1,
-    maxAttachments: 10,
+    maxAttachments: 1,
     allowedAspectRatios: STANDARD_ASPECT_RATIOS,
     maxImages: 4,
     creditCost: 3,
     isQueued: false, // sync model
+    isEditVariant: true,
   },
   {
     id: "img-seedream-v4",
@@ -345,10 +381,12 @@ export const IMAGE_MODELS: ImageModelMeta[] = [
     logo: "bytedance-color",
     isNew: false,
     requiresAttachment: false,
-    allowedAspectRatios: STANDARD_ASPECT_RATIOS,
+    maxAttachments: 10,
+    allowedAspectRatios: DEFAULT_ASPECT_RATIOS,
     maxImages: 4,
     creditCost: 3,
     isQueued: true,
+    editModelId: "img-seedream-v4-edit",
   },
   {
     id: "img-seedream-v4-edit",
@@ -360,53 +398,11 @@ export const IMAGE_MODELS: ImageModelMeta[] = [
     requiresAttachment: true,
     minAttachments: 1,
     maxAttachments: 10,
-    allowedAspectRatios: STANDARD_ASPECT_RATIOS,
+    allowedAspectRatios: DEFAULT_ASPECT_RATIOS,
     maxImages: 4,
     creditCost: 3,
     isQueued: true,
-  },
-  {
-    id: "img-flux-kontext-pro",
-    label: "FLUX Kontext Pro",
-    company: "FLUX",
-    description: "Advanced image-to-image editing model",
-    logo: "flux",
-    isNew: false,
-    requiresAttachment: true,
-    minAttachments: 1,
-    maxAttachments: 1, // Only 1 image supported
-    allowedAspectRatios: STANDARD_ASPECT_RATIOS,
-    maxImages: 4,
-    creditCost: 4,
-    isQueued: false, // sync model
-  },
-  {
-    id: "img-gpt-image-1",
-    label: "GPT-Image 1",
-    company: "OpenAI",
-    description: "OpenAI text-to-image generation",
-    logo: "openai",
-    isNew: false,
-    requiresAttachment: false,
-    allowedAspectRatios: GPT_ASPECT_RATIOS,
-    maxImages: 4,
-    creditCost: 4,
-    isQueued: false, // sync (Azure)
-  },
-  {
-    id: "img-gpt-image-1-edit",
-    label: "GPT-Image 1 Edit",
-    company: "OpenAI",
-    description: "OpenAI image editing",
-    logo: "openai",
-    isNew: false,
-    requiresAttachment: true,
-    minAttachments: 1,
-    maxAttachments: 1,
-    allowedAspectRatios: GPT_ASPECT_RATIOS,
-    maxImages: 4,
-    creditCost: 4,
-    isQueued: false, // sync (Azure)
+    isEditVariant: true,
   },
 ];
 
@@ -432,14 +428,54 @@ export function getModelAspectRatios(id: ImageModelId): AspectRatio[] {
   return model?.allowedAspectRatios ?? VALID_ASPECT_RATIOS;
 }
 
-// Helper to calculate credit cost
+// Flux 2 Max aspect ratio to credits mapping (matches web)
+export function getFlux2MaxCreditsPerImage(aspectRatio?: string): number {
+  switch (aspectRatio) {
+    case "1:1":
+      return 7;
+    case "3:4":
+    case "4:3":
+      return 8;
+    case "9:16":
+    case "16:9":
+      return 9;
+    default:
+      return 7; // Default to square pricing
+  }
+}
+
+// Helper to calculate credit cost (matches web calculateImageCost)
 export function calculateImageCost(
   modelId: ImageModelId,
-  numImages: number
+  numImages: number,
+  options?: {
+    resolution?: Resolution;
+    quality?: Quality;
+    aspectRatio?: AspectRatio;
+  }
 ): number {
-  const model = getModelById(modelId);
-  const baseCost = model?.creditCost ?? 3;
-  return baseCost * numImages;
+  const { resolution, quality, aspectRatio } = options ?? {};
+
+  // GPT-Image 1.5 models have quality-based pricing
+  if (modelId === "img-gpt-image-1-5" || modelId === "img-gpt-image-1-5-edit") {
+    const creditsPerImage = quality === "high" ? 16 : 4; // high = 16, medium (default) = 4
+    return creditsPerImage * numImages;
+  }
+
+  // Nano Banana Pro models have resolution-based pricing
+  if (modelId === "img-nano-banana-pro" || modelId === "img-nano-banana-pro-edit") {
+    const creditsPerImage = resolution === "4K" ? 25 : 15; // 4K = 25, 1K/2K = 15
+    return creditsPerImage * numImages;
+  }
+
+  // Flux 2 Max models have aspect ratio-based pricing
+  if (modelId === "img-flux-2-max" || modelId === "img-flux-2-max-edit") {
+    const creditsPerImage = getFlux2MaxCreditsPerImage(aspectRatio);
+    return creditsPerImage * numImages;
+  }
+
+  // Standard pricing for all other models (3 credits per image)
+  return 3 * numImages;
 }
 
 // Check if model supports resolution setting
@@ -452,6 +488,39 @@ export function modelSupportsResolution(id: ImageModelId): boolean {
 export function modelSupportsQuality(id: ImageModelId): boolean {
   const model = getModelById(id);
   return model?.supportsQuality ?? false;
+}
+
+// Check if attachments are disabled for this model (hide + button)
+export function isAttachmentDisabled(id: ImageModelId): boolean {
+  const model = getModelById(id);
+  return model?.attachmentDisabled ?? false;
+}
+
+// Check if aspect ratio selector should be hidden
+export function isAspectRatioDisabled(id: ImageModelId): boolean {
+  const model = getModelById(id);
+  return model?.aspectRatioDisabled ?? false;
+}
+
+// Get resolution options for model (null if not supported)
+export function getResolutionOptions(id: ImageModelId): Resolution[] | null {
+  const model = getModelById(id);
+  if (!model?.supportsResolution) return null;
+  
+  switch (model.resolutionOptions) {
+    case "1K_2K_4K":
+      return ["1K", "2K", "4K"];
+    case "1K_2K":
+      return ["1K", "2K"];
+    default:
+      return ["1K", "2K", "4K"]; // Default fallback
+  }
+}
+
+// Get max images allowed for model
+export function getMaxImages(id: ImageModelId): number {
+  const model = getModelById(id);
+  return model?.maxImages ?? 4;
 }
 
 // Validate attachments for model
@@ -481,24 +550,59 @@ export function validateAttachments(
   return { valid: true };
 }
 
-// Get display-friendly models (sorted: new first, then alphabetical)
+// Priority models that should appear at the top (in order)
+const PRIORITY_MODEL_IDS: ImageModelId[] = ["img-nano-banana-pro"];
+
+// Get display-friendly models (sorted: priority first, then new, then alphabetical)
+// Filters out edit variants that are hidden from UI
 export function getSortedModels(): ImageModelMeta[] {
-  return [...IMAGE_MODELS].sort((a, b) => {
-    // New models first
-    if (a.isNew !== b.isNew) return a.isNew ? -1 : 1;
-    // Then alphabetical by label
-    return a.label.localeCompare(b.label);
-  });
+  return [...IMAGE_MODELS]
+    .filter((m) => !m.isEditVariant) // Hide edit variants from UI
+    .sort((a, b) => {
+      // Priority models first (in specified order)
+      const aPriority = PRIORITY_MODEL_IDS.indexOf(a.id);
+      const bPriority = PRIORITY_MODEL_IDS.indexOf(b.id);
+      if (aPriority !== -1 && bPriority !== -1) return aPriority - bPriority;
+      if (aPriority !== -1) return -1;
+      if (bPriority !== -1) return 1;
+      // New models next
+      if (a.isNew !== b.isNew) return a.isNew ? -1 : 1;
+      // Then alphabetical by label
+      return a.label.localeCompare(b.label);
+    });
 }
 
 // Get only text-to-image models (no attachment required)
 export function getTextToImageModels(): ImageModelMeta[] {
-  return IMAGE_MODELS.filter((m) => !m.requiresAttachment);
+  return IMAGE_MODELS.filter((m) => !m.requiresAttachment && !m.isEditVariant);
 }
 
 // Get only edit models (attachment required)
 export function getEditModels(): ImageModelMeta[] {
   return IMAGE_MODELS.filter((m) => m.requiresAttachment);
+}
+
+// Get the effective model ID based on whether attachments are present
+// For unified models, returns the edit model ID when attachments exist
+export function getEffectiveModelId(
+  id: ImageModelId,
+  hasAttachments: boolean
+): ImageModelId {
+  const model = getModelById(id);
+  if (!model) return id;
+  
+  // If model has an edit variant and user has attachments, use the edit model
+  if (hasAttachments && model.editModelId) {
+    return model.editModelId;
+  }
+  
+  return id;
+}
+
+// Check if model is a unified model (has both text-to-image and edit capabilities)
+export function isUnifiedModel(id: ImageModelId): boolean {
+  const model = getModelById(id);
+  return !!model?.editModelId;
 }
 
 // Polling configuration (matches web's polling-policy.ts)
@@ -518,3 +622,84 @@ export const DEFAULT_SETTINGS = {
   resolution: "1K" as Resolution,
   quality: "medium" as Quality,
 };
+
+// Model IDs enum for easy reference (matches web's model-ids.ts)
+export const IMAGE_MODEL_IDS = {
+  IMAGEN4_PREVIEW: "img-imagen4-preview" as ImageModelId,
+  IMAGEN3: "img-imagen3" as ImageModelId,
+  NANO_BANANA: "img-nano-banana" as ImageModelId,
+  NANO_BANANA_EDIT: "img-nano-banana-edit" as ImageModelId,
+  NANO_BANANA_PRO: "img-nano-banana-pro" as ImageModelId,
+  NANO_BANANA_PRO_EDIT: "img-nano-banana-pro-edit" as ImageModelId,
+  SEEDREAM_V4: "img-seedream-v4" as ImageModelId,
+  SEEDREAM_V4_EDIT: "img-seedream-v4-edit" as ImageModelId,
+  SEEDREAM_V45: "img-seedream-v45" as ImageModelId,
+  SEEDREAM_V45_EDIT: "img-seedream-v45-edit" as ImageModelId,
+  GPT_IMAGE_1_5: "img-gpt-image-1-5" as ImageModelId,
+  GPT_IMAGE_1_5_EDIT: "img-gpt-image-1-5-edit" as ImageModelId,
+  HUNYUAN_V21: "img-hunyuan-v21" as ImageModelId,
+  WAN_V22_A14B: "img-wan-v22-a14b" as ImageModelId,
+  REVE: "img-reve" as ImageModelId,
+  REVE_EDIT: "img-reve-edit" as ImageModelId,
+  KLING_O1_IMAGE: "img-kling-o1" as ImageModelId,
+  FLUX_2_MAX: "img-flux-2-max" as ImageModelId,
+  FLUX_2_MAX_EDIT: "img-flux-2-max-edit" as ImageModelId,
+} as const;
+
+// Models that support multiple reference images (up to 10)
+// Includes both unified models and their edit variants
+export const MULTI_IMAGE_MODELS: ImageModelId[] = [
+  // Unified models (base models that switch to edit when attachments present)
+  IMAGE_MODEL_IDS.NANO_BANANA,
+  IMAGE_MODEL_IDS.NANO_BANANA_PRO,
+  IMAGE_MODEL_IDS.SEEDREAM_V4,
+  IMAGE_MODEL_IDS.SEEDREAM_V45,
+  IMAGE_MODEL_IDS.GPT_IMAGE_1_5,
+  IMAGE_MODEL_IDS.FLUX_2_MAX,
+  // Edit variants
+  IMAGE_MODEL_IDS.NANO_BANANA_EDIT,
+  IMAGE_MODEL_IDS.NANO_BANANA_PRO_EDIT,
+  IMAGE_MODEL_IDS.SEEDREAM_V4_EDIT,
+  IMAGE_MODEL_IDS.SEEDREAM_V45_EDIT,
+  IMAGE_MODEL_IDS.KLING_O1_IMAGE,
+  IMAGE_MODEL_IDS.FLUX_2_MAX_EDIT,
+  IMAGE_MODEL_IDS.GPT_IMAGE_1_5_EDIT,
+];
+
+// Models that only support single reference image (replace existing)
+export const SINGLE_IMAGE_MODELS: ImageModelId[] = [
+  IMAGE_MODEL_IDS.REVE,
+  IMAGE_MODEL_IDS.REVE_EDIT,
+];
+
+// Check if model supports multiple reference images
+export function modelSupportsMultipleImages(id: ImageModelId): boolean {
+  return MULTI_IMAGE_MODELS.includes(id);
+}
+
+// Check if model is Kling O1 (needs @Image mentions)
+export function isKlingO1Model(id: ImageModelId): boolean {
+  return id === IMAGE_MODEL_IDS.KLING_O1_IMAGE;
+}
+
+// Validate Kling O1 @Image mentions against available images
+export function validateKlingO1Prompt(
+  prompt: string,
+  imageCount: number
+): { valid: boolean; message?: string } {
+  // Find all @ImageN mentions in prompt
+  const mentionRegex = /@Image(\d+)/g;
+  const mentions = [...prompt.matchAll(mentionRegex)];
+  
+  for (const match of mentions) {
+    const imageIndex = parseInt(match[1], 10);
+    if (imageIndex < 1 || imageIndex > imageCount) {
+      return {
+        valid: false,
+        message: `@Image${imageIndex} referenced but only ${imageCount} image(s) attached`,
+      };
+    }
+  }
+  
+  return { valid: true };
+}
