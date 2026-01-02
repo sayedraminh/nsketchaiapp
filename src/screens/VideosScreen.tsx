@@ -931,8 +931,8 @@ export default function VideosScreen() {
           {canAttachImage && (
             <View 
               style={{ position: 'absolute', top: -78, left: 15, zIndex: -1, transform: [{ rotate: '-5deg' }] }}
-              shouldRasterizeIOS={true}
-              renderToHardwareTextureAndroid={true}
+              {...(Platform.OS === 'ios' ? { shouldRasterizeIOS: true } : {})}
+              {...(Platform.OS === 'android' ? { renderToHardwareTextureAndroid: true } : {})}
             >
               {attachments.length === 0 ? (
                 <MenuView
@@ -972,8 +972,8 @@ export default function VideosScreen() {
                     backgroundColor: '#ffffff',
                     borderRadius: 14,
                   }}
-                  shouldRasterizeIOS={true}
-                  renderToHardwareTextureAndroid={true}
+                  {...(Platform.OS === 'ios' ? { shouldRasterizeIOS: true } : {})}
+                  {...(Platform.OS === 'android' ? { renderToHardwareTextureAndroid: true } : {})}
                 >
                   <Image
                     source={attachments[0].uri}
