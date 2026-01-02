@@ -1,50 +1,115 @@
-import React, { useCallback, useMemo, forwardRef, useRef } from "react";
-import { View, Text, Pressable, useWindowDimensions } from "react-native";
+import React, { useCallback, useMemo, forwardRef, useRef, useState } from "react";
+import { View, Text, Pressable, useWindowDimensions, TextInput } from "react-native";
 import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
 import { BottomSheetModal, BottomSheetFlatList, BottomSheetBackdrop } from "@gorhom/bottom-sheet";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { 
+  VIDEO_MODELS, 
+  getSortedVideoModels, 
+  VideoModelId, 
+  VideoModelMeta,
+} from "../config/videoModels";
 
 interface Badge {
-  type: "new" | "resolution" | "duration" | "audio" | "credits";
+  type: "new" | "resolution" | "duration" | "audio" | "credits" | "i2v" | "transition";
   label?: string;
 }
 
 interface VideoModelItem {
-  id: string;
+  id: VideoModelId;
   name: string;
   description: string;
   icon: any;
-  iconType: "image" | "emoji";
-  emoji?: string;
+  tintColor?: string;
   badges: Badge[];
 }
 
-const videoModels: VideoModelItem[] = [
-  { id: "1", name: "Sora 2", description: "OpenAI's state-of-the-art video generation", icon: require("../../assets/sora.png"), iconType: "image", badges: [{ type: "new" }, { type: "resolution", label: "720p" }, { type: "duration", label: "10s-15s" }, { type: "credits", label: "30 credits" }] },
-  { id: "2", name: "Ovi", description: "Unified audio-video generation with sound", icon: require("../../assets/ovi.png"), iconType: "image", badges: [{ type: "new" }, { type: "resolution", label: "Various" }, { type: "duration", label: "5s" }, { type: "audio" }, { type: "credits", label: "21 credits" }] },
-  { id: "3", name: "Kandinsky 5", description: "Fast, high-quality text-to-video", icon: null, iconType: "emoji", emoji: "🐼", badges: [{ type: "new" }, { type: "resolution", label: "512p-768p" }, { type: "duration", label: "5s-10s" }, { type: "credits", label: "12 credits" }] },
-  { id: "4", name: "Kling 2.5 Turbo", description: "Next generation video generation", icon: require("../../assets/kling.png"), iconType: "image", badges: [{ type: "new" }, { type: "resolution", label: "720p-1080p" }, { type: "duration", label: "5s-10s" }, { type: "credits", label: "40 credits" }] },
-  { id: "5", name: "MiniMax Hailuo 2.3 Pro", description: "Advanced 1080p video generation", icon: require("../../assets/minimax.png"), iconType: "image", badges: [{ type: "new" }, { type: "resolution", label: "1080p" }, { type: "duration", label: "5s" }, { type: "credits", label: "49 credits" }] },
-  { id: "6", name: "MiniMax Hailuo 2.3 Standard", description: "High-quality video generation", icon: require("../../assets/minimax.png"), iconType: "image", badges: [{ type: "new" }, { type: "resolution", label: "720p" }, { type: "duration", label: "6s-10s" }, { type: "credits", label: "30 credits" }] },
-  { id: "7", name: "Seedance Lite", description: "ByteDance's fast video generation", icon: require("../../assets/bytedance-color.png"), iconType: "image", badges: [{ type: "new" }, { type: "resolution", label: "480p-1080p" }, { type: "duration", label: "5s-12s" }, { type: "credits", label: "21 credits" }] },
-  { id: "8", name: "Seedance Pro", description: "ByteDance's high-quality video", icon: require("../../assets/bytedance-color.png"), iconType: "image", badges: [{ type: "new" }, { type: "resolution", label: "480p-1080p" }, { type: "duration", label: "5s-12s" }, { type: "credits", label: "34 credits" }] },
-  { id: "9", name: "Veo 3.1", description: "Advanced video with sound", icon: require("../../assets/googleg.png"), iconType: "image", badges: [{ type: "new" }, { type: "resolution", label: "720p" }, { type: "duration", label: "4s-12s" }, { type: "audio" }, { type: "credits", label: "240 credits" }] },
-  { id: "10", name: "Veo 3.1 Fast", description: "Faster, cost-effective Veo 3.1", icon: require("../../assets/googleg.png"), iconType: "image", badges: [{ type: "new" }, { type: "resolution", label: "720p" }, { type: "duration", label: "4s-12s" }, { type: "audio" }, { type: "credits", label: "108 credits" }] },
-  { id: "11", name: "Pixverse v5", description: "High-quality text/image-to-video", icon: null, iconType: "emoji", emoji: "🎬", badges: [{ type: "resolution", label: "360p-1080p" }, { type: "duration", label: "5s-8s" }, { type: "credits", label: "16 credits" }] },
-  { id: "12", name: "Lucy Lite", description: "Fast 3s image-to-video", icon: require("../../assets/foreverai.png"), iconType: "image", badges: [{ type: "resolution", label: "720p" }, { type: "duration", label: "3s" }, { type: "credits", label: "16 credits" }] },
-  { id: "13", name: "Lucy Pro", description: "High-quality 5s image-to-video", icon: require("../../assets/foreverai.png"), iconType: "image", badges: [{ type: "resolution", label: "720p-1080p" }, { type: "duration", label: "5s" }, { type: "credits", label: "32 credits" }] },
-];
+// Logo assets mapping
+const LOGO_ASSETS: Record<string, any> = {
+  "openai": require("../../assets/openai.png"),
+  "googleg": require("../../assets/googleg.png"),
+  "bytedance-color": require("../../assets/bytedance-color.png"),
+  "kling": require("../../assets/bytedance-color.png"),
+  "alibaba": require("../../assets/bytedance-color.png"),
+  "minimax": require("../../assets/minimax.png"),
+  "luma": require("../../assets/foreverai.png"),
+  "sber": require("../../assets/bytedance-color.png"),
+};
 
-interface Props {
-  onSelectModel: (model: string) => void;
+// Logo tint colors (for dark icons that need white tint)
+const LOGO_TINTS: Record<string, string | undefined> = {
+  "openai": "#fff",
+};
+
+// Convert VideoModelMeta to VideoModelItem
+function modelMetaToItem(meta: VideoModelMeta): VideoModelItem {
+  const badges: Badge[] = [];
+  
+  if (meta.isNew) {
+    badges.push({ type: "new" });
+  }
+  
+  if (meta.requiresAttachment && !meta.isTransition) {
+    badges.push({ type: "i2v" });
+  }
+  
+  if (meta.isTransition) {
+    badges.push({ type: "transition" });
+  }
+  
+  if (meta.supportsAudio) {
+    badges.push({ type: "audio" });
+  }
+  
+  // Resolution badge
+  const resolutions = meta.allowedResolutions?.join("/") || "720p";
+  badges.push({ type: "resolution", label: resolutions });
+  
+  // Duration badge
+  const durations = meta.allowedDurations;
+  const durationLabel = durations.length > 1 
+    ? `${Math.min(...durations)}s-${Math.max(...durations)}s`
+    : `${durations[0]}s`;
+  badges.push({ type: "duration", label: durationLabel });
+  
+  badges.push({ type: "credits", label: `${meta.baseCreditCost} credits` });
+  
+  return {
+    id: meta.id,
+    name: meta.label,
+    description: meta.description,
+    icon: LOGO_ASSETS[meta.logo] || LOGO_ASSETS["googleg"],
+    tintColor: LOGO_TINTS[meta.logo],
+    badges,
+  };
 }
 
-const VideoModelSelectorSheet = forwardRef<BottomSheetModal, Props>(({ onSelectModel }, ref) => {
+// Get all models as VideoModelItems, sorted
+const videoModels: VideoModelItem[] = getSortedVideoModels().map(modelMetaToItem);
+
+interface Props {
+  onSelectModel: (modelId: VideoModelId, modelLabel: string) => void;
+  selectedModelId?: VideoModelId;
+}
+
+const VideoModelSelectorSheet = forwardRef<BottomSheetModal, Props>(({ onSelectModel, selectedModelId }, ref) => {
   const internalRef = useRef<BottomSheetModal>(null);
   const insets = useSafeAreaInsets();
   const { height } = useWindowDimensions();
   const snapPoints = useMemo(() => [height * 1 - insets.top], [height, insets.top]);
+  const [searchQuery, setSearchQuery] = useState("");
+
+  // Filter models based on search
+  const filteredModels = useMemo(() => {
+    if (!searchQuery.trim()) return videoModels;
+    const query = searchQuery.toLowerCase();
+    return videoModels.filter(
+      (m) =>
+        m.name.toLowerCase().includes(query) ||
+        m.description.toLowerCase().includes(query)
+    );
+  }, [searchQuery]);
 
   // Sync internal ref with forwarded ref
   const setRef = useCallback((instance: BottomSheetModal | null) => {
@@ -63,8 +128,9 @@ const VideoModelSelectorSheet = forwardRef<BottomSheetModal, Props>(({ onSelectM
     []
   );
 
-  const handleSelectModel = useCallback((modelName: string) => {
-    onSelectModel(modelName);
+  const handleSelectModel = useCallback((modelId: VideoModelId, modelLabel: string) => {
+    onSelectModel(modelId, modelLabel);
+    setSearchQuery("");
     internalRef.current?.dismiss();
   }, [onSelectModel]);
 
@@ -74,6 +140,20 @@ const VideoModelSelectorSheet = forwardRef<BottomSheetModal, Props>(({ onSelectM
         return (
           <View key={index} className="rounded-full px-2.5 py-1 mr-1.5 mb-1" style={{ backgroundColor: "#0066FF" }}>
             <Text className="text-white text-xs font-semibold">New</Text>
+          </View>
+        );
+      case "i2v":
+        return (
+          <View key={index} className="rounded-full px-2.5 py-1 mr-1.5 mb-1 flex-row items-center" style={{ backgroundColor: "#2a2a2a" }}>
+            <Ionicons name="image-outline" size={11} color="#fff" />
+            <Text className="text-white text-xs ml-1">I2V</Text>
+          </View>
+        );
+      case "transition":
+        return (
+          <View key={index} className="rounded-full px-2.5 py-1 mr-1.5 mb-1 flex-row items-center" style={{ backgroundColor: "#2a2a2a" }}>
+            <Ionicons name="swap-horizontal-outline" size={11} color="#fff" />
+            <Text className="text-white text-xs ml-1">Transition</Text>
           </View>
         );
       case "resolution":
@@ -111,16 +191,16 @@ const VideoModelSelectorSheet = forwardRef<BottomSheetModal, Props>(({ onSelectM
 
   const renderItem = useCallback(({ item }: { item: VideoModelItem }) => (
     <Pressable
-      onPress={() => handleSelectModel(item.name)}
+      onPress={() => handleSelectModel(item.id, item.name)}
       className="mb-5 active:opacity-70"
     >
       <View className="flex-row items-start mb-2">
         <View className="w-11 h-11 rounded-xl items-center justify-center mr-3" style={{ backgroundColor: "#2a2a2a" }}>
-          {item.iconType === "emoji" ? (
-            <Text className="text-xl">{item.emoji}</Text>
-          ) : (
-            <Image source={item.icon} style={{ width: 28, height: 28 }} contentFit="contain" />
-          )}
+          <Image 
+            source={item.icon} 
+            style={{ width: 28, height: 28, ...(item.tintColor ? { tintColor: item.tintColor } : {}) }} 
+            contentFit="contain" 
+          />
         </View>
         <View className="flex-1">
           <Text className="text-white text-xl font-bold">{item.name}</Text>
@@ -144,11 +224,36 @@ const VideoModelSelectorSheet = forwardRef<BottomSheetModal, Props>(({ onSelectM
       handleComponent={() => null}
       topInset={insets.top}
     >
+      <View className="px-5 pt-4 pb-3">
+        <View className="flex-row items-center bg-neutral-800 rounded-xl px-4 py-3">
+          <Ionicons name="search" size={18} color="#9ca3af" />
+          <TextInput
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            placeholder="Search video models..."
+            placeholderTextColor="#9ca3af"
+            className="flex-1 text-white text-base ml-2"
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+          {searchQuery.length > 0 && (
+            <Pressable onPress={() => setSearchQuery("")} className="p-1">
+              <Ionicons name="close-circle" size={18} color="#9ca3af" />
+            </Pressable>
+          )}
+        </View>
+      </View>
       <BottomSheetFlatList
-        data={videoModels}
+        data={filteredModels}
         keyExtractor={(item) => item.id}
         renderItem={renderItem}
-        contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 10, paddingBottom: 40 }}
+        contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 40 }}
+        ListEmptyComponent={
+          <View className="items-center py-10">
+            <Ionicons name="search-outline" size={48} color="#4b5563" />
+            <Text className="text-gray-500 mt-3">No models found</Text>
+          </View>
+        }
       />
     </BottomSheetModal>
   );

@@ -23,7 +23,10 @@ export type TabParamList = {
       autoGenerate?: boolean;
     };
   } | undefined;
-  Videos: undefined;
+  Videos: { 
+    sessionId?: string; 
+    sessionTitle?: string;
+  } | undefined;
   Enhancer: undefined;
   Assets: undefined;
 };

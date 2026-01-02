@@ -1142,6 +1142,7 @@ export default function ImagesScreen() {
 
         {/* Prompt Bar at Bottom */}
         <Animated.View style={[{ position: 'absolute', bottom: 90, left: 12, right: 12 }, promptBarStyle]}>
+          <View>
           <BlurView 
             intensity={80} 
             tint="dark"
@@ -1223,8 +1224,8 @@ export default function ImagesScreen() {
                     >
                       <View
                         style={{
-                          width: 10,
-                          height: 12,
+                          width: selectedAspectRatio === "9:16" || selectedAspectRatio === "3:4" ? 8 : selectedAspectRatio === "1:1" ? 11 : 14,
+                          height: selectedAspectRatio === "16:9" || selectedAspectRatio === "4:3" ? 8 : selectedAspectRatio === "1:1" ? 11 : 14,
                           borderWidth: 1.5,
                           borderColor: "#fff",
                           borderRadius: 2,
@@ -1305,6 +1306,8 @@ export default function ImagesScreen() {
             </View>
           </View>
           </BlurView>
+          <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, borderRadius: 24, borderWidth: 0.5, borderColor: 'rgba(255, 255, 255, 0.2)', zIndex: 10 }} />
+          </View>
         </Animated.View>
       </SafeAreaView>
 

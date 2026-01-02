@@ -27,6 +27,16 @@ const DRAWER_WIDTH = SCREEN_WIDTH * 0.8;
 type SessionType = "image" | "video" | "edit" | "assets";
 type FilterType = "all" | "image" | "video" | "edit";
 
+// Session type from Convex
+interface Session {
+  _id: string;
+  title: string;
+  type: SessionType;
+  preview?: string;
+  createdAt: number;
+  updatedAt?: number;
+}
+
 export interface SessionsDrawerRef {
   openDrawer: () => void;
   closeDrawer: () => void;
@@ -112,7 +122,7 @@ const SessionsDrawer = forwardRef<SessionsDrawerRef, SessionsDrawerProps>(
   const sessions = useQuery(api.sessions.getUserSessions);
   const isLoading = sessions === undefined;
 
-  const handleSessionPress = (session: any) => {
+  const handleSessionPress = (session: Session) => {
     drawerRef.current?.closeDrawer();
     // Navigate to the appropriate tab with session data
     if (session.type === "image") {
@@ -128,8 +138,33 @@ const SessionsDrawer = forwardRef<SessionsDrawerRef, SessionsDrawerProps>(
           },
         })
       );
+    } else if (session.type === "video") {
+      navigation.dispatch(
+        CommonActions.navigate({
+          name: "Main",
+          params: {
+            screen: "Videos",
+            params: {
+              sessionId: session._id,
+              sessionTitle: session.title,
+            },
+          },
+        })
+      );
+    } else if (session.type === "edit") {
+      navigation.dispatch(
+        CommonActions.navigate({
+          name: "Main",
+          params: {
+            screen: "Enhancer",
+            params: {
+              sessionId: session._id,
+              sessionTitle: session.title,
+            },
+          },
+        })
+      );
     }
-    // TODO: Add navigation for video/edit types
   };
 
   // Filter out assets sessions, TTS/audio-only edit sessions, and deduplicate empty "New" sessions
@@ -137,7 +172,7 @@ const SessionsDrawer = forwardRef<SessionsDrawerRef, SessionsDrawerProps>(
     if (!sessions) return [];
     
     // Filter out assets type and TTS/audio-only edit sessions
-    const filteredSessions = sessions.filter((s) => {
+    const filteredSessions = sessions.filter((s: Session) => {
       // Always filter out assets
       if (s.type === "assets") return false;
       
@@ -171,7 +206,7 @@ const SessionsDrawer = forwardRef<SessionsDrawerRef, SessionsDrawerProps>(
     
     // Track seen empty session types to deduplicate
     const seenEmptyTypes = new Set<string>();
-    const deduplicated = filteredSessions.filter((s) => {
+    const deduplicated = filteredSessions.filter((s: Session) => {
       const isNewSession = s.title?.startsWith("New ") || s.title?.includes("New Session");
       if (isNewSession && !s.preview) {
         // This is likely an empty "new" session
@@ -187,7 +222,7 @@ const SessionsDrawer = forwardRef<SessionsDrawerRef, SessionsDrawerProps>(
   }, [sessions]);
 
   const filteredSessions = selectedFilter && processedSessions
-    ? processedSessions.filter((s) => {
+    ? processedSessions.filter((s: Session) => {
         if (selectedFilter === "image") return s.type === "image";
         if (selectedFilter === "video") return s.type === "video";
         if (selectedFilter === "edit") return s.type === "edit";
@@ -280,7 +315,7 @@ const SessionsDrawer = forwardRef<SessionsDrawerRef, SessionsDrawerProps>(
             <Text className="text-gray-500 text-sm mt-3">No sessions yet</Text>
           </View>
         ) : (
-          filteredSessions.map((session) => (
+          filteredSessions.map((session: Session) => (
             <Pressable
               key={session._id}
               className="flex-row items-center px-4 py-3 active:bg-white/5"
