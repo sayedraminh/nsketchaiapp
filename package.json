@@ -25,6 +25,7 @@
     "convex": "^1.31.2",
     "expo": "~53.0.23",
     "expo-asset": "~11.1.7",
+    "expo-av": "^16.0.8",
     "expo-blur": "~14.1.5",
     "expo-build-properties": "~0.14.8",
     "expo-clipboard": "~7.1.5",
