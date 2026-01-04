@@ -54,7 +54,7 @@ function modelMetaToItem(meta: VideoModelMeta): VideoModelItem {
     badges.push({ type: "i2v" });
   }
   
-  if (meta.isTransition) {
+  if (meta.supportsTransition) {
     badges.push({ type: "transition" });
   }
   

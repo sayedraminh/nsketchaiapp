@@ -186,6 +186,13 @@ export default function ImagesScreen() {
   const [attachments, setAttachments] = useState<SelectedImage[]>([]);
   const [isUploadingAttachments, setIsUploadingAttachments] = useState(false);
   const [savingGenerationId, setSavingGenerationId] = useState<string | null>(null);
+
+  const [pendingGenerationPreview, setPendingGenerationPreview] = useState<{
+    prompt: string;
+    modelLabel: string;
+    aspectRatio: AspectRatio;
+    numImages: number;
+  } | null>(null);
   
   // UI state
   const [showAdvancedOptions, setShowAdvancedOptions] = useState(false);
@@ -277,6 +284,9 @@ export default function ImagesScreen() {
         numImages: incoming.numImages,
         attachmentImages: attachmentUrls,
         sessionId: undefined, // Fresh session
+        onSessionId: (sessionId) => {
+          setCurrentSessionId((prev) => prev ?? sessionId);
+        },
       });
 
       if (result.success) {
@@ -284,9 +294,6 @@ export default function ImagesScreen() {
         if (result.sessionId) {
           setCurrentSessionId(result.sessionId);
         }
-        // Clear prompt and attachments on success
-        setPrompt("");
-        setAttachments([]);
       } else {
         Alert.alert("Generation Failed", result.error || "Unknown error");
       }
@@ -587,7 +594,9 @@ export default function ImagesScreen() {
 
   // Handle generation
   const handleGenerate = async () => {
-    if (!prompt.trim()) {
+    const promptSnapshot = prompt.trim();
+
+    if (!promptSnapshot) {
       Alert.alert("Error", "Please enter a prompt");
       return;
     }
@@ -603,6 +612,17 @@ export default function ImagesScreen() {
     }
 
     Keyboard.dismiss();
+
+    // Snapshot what the user is generating so the in-flight skeleton doesn't change
+    // when the prompt bar is edited mid-generation.
+    const effectiveModelId = getEffectiveModelId(selectedModelId, attachments.length > 0);
+    const effectiveModel = getModelById(effectiveModelId);
+    setPendingGenerationPreview({
+      prompt: promptSnapshot,
+      modelLabel: effectiveModel?.label ?? selectedModelLabel,
+      aspectRatio: selectedAspectRatio,
+      numImages: numberOfImages,
+    });
 
     try {
       let attachmentUrls: Array<{ url: string }> | undefined;
@@ -643,12 +663,9 @@ export default function ImagesScreen() {
         setIsUploadingAttachments(false);
       }
 
-      // Get effective model ID (switches to edit model if attachments present)
-      const effectiveModelId = getEffectiveModelId(selectedModelId, attachments.length > 0);
-
       // Start generation
       const result = await generate({
-        prompt: prompt.trim(),
+        prompt: promptSnapshot,
         modelId: effectiveModelId,
         aspectRatio: selectedAspectRatio,
         numImages: numberOfImages,
@@ -656,6 +673,9 @@ export default function ImagesScreen() {
         resolution: supportsResolution ? selectedResolution : undefined,
         quality: supportsQuality ? selectedQuality : undefined,
         sessionId: currentSessionId,
+        onSessionId: (sessionId) => {
+          setCurrentSessionId((prev) => prev ?? sessionId);
+        },
       });
 
       if (result.success) {
@@ -663,14 +683,14 @@ export default function ImagesScreen() {
         if (result.sessionId && !currentSessionId) {
           setCurrentSessionId(result.sessionId);
         }
-        // Clear prompt on success
-        setPrompt("");
-        setAttachments([]);
+        setPendingGenerationPreview(null);
       } else {
+        setPendingGenerationPreview(null);
         Alert.alert("Generation Failed", result.error || "Unknown error");
       }
     } catch (error) {
       setIsUploadingAttachments(false);
+      setPendingGenerationPreview(null);
       const message = error instanceof Error ? error.message : "Generation failed";
       Alert.alert("Error", message);
     }
@@ -684,7 +704,6 @@ export default function ImagesScreen() {
   // Check if generate button should be enabled
   const canGenerate =
     prompt.trim().length > 0 &&
-    !isGenerating &&
     !isUploadingAttachments &&
     credits >= estimatedCost &&
     (!requiresAttachment || attachments.length > 0) &&
@@ -778,25 +797,27 @@ export default function ImagesScreen() {
           onScroll={scrollHandler}
           scrollEventThrottle={16}
         >
-          {isLoadingGenerations ? (
+          {isLoadingGenerations && !pendingGenerationPreview ? (
             <View className="items-center justify-center py-20">
               <ActivityIndicator size="large" color="#a855f7" />
               <Text className="text-gray-500 text-sm mt-3">Loading...</Text>
             </View>
-          ) : isGenerating && (!generations || generations.length === 0) ? (
+          ) : (pendingGenerationPreview || isGenerating) && (!generations || generations.length === 0) ? (
             // Show skeleton when generating in a new session (no generations yet)
             <View>
               {/* Prompt preview */}
               <View className="bg-neutral-800 rounded-3xl px-4 py-3 mb-2 self-end" style={{ maxWidth: '90%' }}>
                 <Text className="text-white text-base text-center" numberOfLines={7}>
-                  {prompt}
+                  {pendingGenerationPreview?.prompt ?? prompt}
                 </Text>
               </View>
               {/* Model Badge */}
               <View className="flex-row items-center justify-end mb-3">
                 <View className="flex-row items-center bg-neutral-800 rounded-full px-3 py-1.5">
                   <Ionicons name="image-outline" size={14} color="#fff" />
-                  <Text className="text-white text-xs ml-1.5">{selectedModelLabel}</Text>
+                  <Text className="text-white text-xs ml-1.5">
+                    {pendingGenerationPreview?.modelLabel ?? selectedModelLabel}
+                  </Text>
                 </View>
               </View>
               {/* Generation Header */}
@@ -809,7 +830,7 @@ export default function ImagesScreen() {
                 <ShimmerText text="Generating..." />
               </View>
               {/* Skeleton */}
-              {numberOfImages === 1 ? (
+              {(pendingGenerationPreview?.numImages ?? numberOfImages) === 1 ? (
                 <AutoSkeletonView 
                   isLoading={true} 
                   defaultRadius={16}
@@ -818,7 +839,10 @@ export default function ImagesScreen() {
                   <View
                     style={{ 
                       width: IMAGE_WIDTH, 
-                      height: Math.min(IMAGE_WIDTH / parseAspectRatio(selectedAspectRatio), IMAGE_WIDTH * 1.3), 
+                      height: Math.min(
+                        IMAGE_WIDTH / parseAspectRatio(pendingGenerationPreview?.aspectRatio ?? selectedAspectRatio),
+                        IMAGE_WIDTH * 1.3
+                      ), 
                       backgroundColor: "#1a1a1a", 
                       borderRadius: 16 
                     }}
@@ -831,7 +855,7 @@ export default function ImagesScreen() {
                   scrollEnabled={false}
                   contentContainerStyle={{ paddingHorizontal: 20 }}
                 >
-                  {Array.from({ length: numberOfImages }).map((_, idx) => (
+                  {Array.from({ length: pendingGenerationPreview?.numImages ?? numberOfImages }).map((_, idx) => (
                     <AutoSkeletonView 
                       key={idx}
                       isLoading={true} 
@@ -841,7 +865,7 @@ export default function ImagesScreen() {
                       <View
                         style={{
                           width: MULTI_IMAGE_WIDTH,
-                          height: MULTI_IMAGE_WIDTH / parseAspectRatio(selectedAspectRatio),
+                          height: MULTI_IMAGE_WIDTH / parseAspectRatio(pendingGenerationPreview?.aspectRatio ?? selectedAspectRatio),
                           backgroundColor: "#1a1a1a",
                           borderRadius: 16,
                           marginRight: 12,
@@ -1269,16 +1293,21 @@ export default function ImagesScreen() {
                 <Pressable
                   onPress={handleGenerate}
                   disabled={!canGenerate}
-                  className="rounded-full p-2 active:opacity-70"
+                  className="active:opacity-70"
                   style={{ 
-                    backgroundColor: canGenerate ? "#a855f7" : "#4a4a4a",
-                    opacity: canGenerate ? 1 : 0.6,
+                    opacity: canGenerate ? 1 : 0.5,
+                    borderRadius: 22,
+                    overflow: 'hidden',
                   }}
                 >
-                  {isGenerating || isUploadingAttachments ? (
-                    <ActivityIndicator size="small" color="#fff" />
+                  {isUploadingAttachments ? (
+                    <ActivityIndicator size="small" color="#a855f7" />
                   ) : (
-                    <Ionicons name="sparkles" size={20} color="#fff" />
+                    <Image
+                      source={require("../../assets/genbutton.png")}
+                      style={{ width: 36, height: 36 }}
+                      contentFit="contain"
+                    />
                   )}
                 </Pressable>
               </View>
@@ -1293,17 +1322,6 @@ export default function ImagesScreen() {
                 </Text>
               </View>
             )}
-
-            {/* Bottom Row: Enhance prompt only */}
-            <View className="flex-row items-center mt-3">
-              <Pressable
-                className="flex-row items-center rounded-full px-2.5 py-1.5 active:opacity-70"
-                style={{ backgroundColor: "#3a3a3a" }}
-              >
-                <Ionicons name="hardware-chip-outline" size={14} color="#fff" />
-                <Text className="text-white text-xs ml-1.5">Enhance prompt</Text>
-              </Pressable>
-            </View>
           </View>
           </BlurView>
           <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, borderRadius: 24, borderWidth: 0.5, borderColor: 'rgba(255, 255, 255, 0.2)', zIndex: 10 }} />
