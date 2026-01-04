@@ -11,6 +11,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { api } from "../../convex/_generated/api";
 import { Id } from "../../convex/_generated/dataModel";
 import { apiRequest } from "../lib/api";
+import { withGenerationSlotLock } from "../lib/generationSlotQueue";
 import {
   VideoModelId,
   VideoAspectRatio,
@@ -45,26 +46,16 @@ function getMobileVideoEndpoint(modelId: VideoModelId): { endpoint: string; stat
   }
 
   // KIE Seedance 1.5 Pro models
-  if (
-    modelId === "kie-seedance-1.5-pro" ||
-    modelId === "kie-seedance-1.5-pro-transition"
-  ) {
+  if (modelId === "kie-seedance-1.5-pro") {
     return {
       endpoint: "/api/mobile/kie-seedance-1.5-pro",
       statusEndpoint: "/api/kie-seedance-1.5-pro/status", // Web status endpoint
     };
   }
 
-  // KIE Kling 2.5 Turbo / Transition
-  if (modelId === "kling-2.5-turbo-transition") {
-    return {
-      endpoint: "/api/mobile/kie-kling-2.5",
-      statusEndpoint: "/api/kie-kling-2.5/status", // Web status endpoint
-    };
-  }
 
   // Pixverse Models (uses FAL under the hood)
-  if (modelId === "pixverse-v5" || modelId === "pixverse-v5-transition") {
+  if (modelId === "pixverse-v5") {
     return {
       endpoint: "/api/mobile/pixverse-video",
       statusEndpoint: "/api/fal-generate-videos/status", // Unified FAL status endpoint
@@ -106,6 +97,7 @@ export interface VideoGenerationRequest {
   endFrameImageUrl?: string; // For transitions
   klingO1Images?: Array<{ url: string }>; // For Kling O1 reference mode
   sessionId?: string;
+  onSessionId?: (sessionId: string) => void;
 }
 
 // Generation status
@@ -270,9 +262,7 @@ export function useVideoGeneration() {
 
         try {
           // Determine correct query param based on model/endpoint
-          const isKieModel = 
-            modelId.startsWith("kie-") || 
-            modelId === "kling-2.5-turbo-transition";
+          const isKieModel = modelId.startsWith("kie-");
           
           let queryParam: string;
           if (isKieModel) {
@@ -381,6 +371,7 @@ export function useVideoGeneration() {
         endFrameImageUrl,
         klingO1Images,
         sessionId: existingSessionId,
+        onSessionId,
       } = request;
 
       // Reset state
@@ -417,7 +408,9 @@ export function useVideoGeneration() {
 
         // 1. Acquire generation slot
         setState((prev) => ({ ...prev, status: "acquiring_slot", progress: 10 }));
-        const slotResult = await acquireSlot({ type: "video" });
+        const slotResult = await withGenerationSlotLock(() =>
+          acquireSlot({ type: "video", prompt } as any)
+        );
         console.log("[useVideoGeneration] acquireSlot result:", JSON.stringify(slotResult));
 
         // Handle both response formats
@@ -425,7 +418,22 @@ export function useVideoGeneration() {
           throw new Error("Failed to acquire generation slot - no result");
         }
 
-        if (typeof slotResult === "string") {
+        // New response format: { ok: boolean, reason?: 'limit_reached', limit, active, generationId }
+        if (typeof slotResult === "object" && slotResult !== null && "ok" in slotResult) {
+          const result: any = slotResult;
+          if (result.ok === false) {
+            if (result.reason === "limit_reached") {
+              throw new Error(
+                `Concurrent generation limit reached (${result.active}/${result.limit}). Please wait or upgrade your plan.`
+              );
+            }
+            throw new Error(result.message || "Failed to acquire generation slot");
+          }
+          if (!result.generationId) {
+            throw new Error("Failed to acquire generation slot - missing generationId");
+          }
+          slotId = result.generationId as Id<"generations">;
+        } else if (typeof slotResult === "string") {
           slotId = slotResult as Id<"generations">;
         } else if (typeof slotResult === "object") {
           if ("success" in slotResult && slotResult.success === false) {
@@ -464,6 +472,9 @@ export function useVideoGeneration() {
             type: "video",
           });
           sessionId = sessionResult;
+          if (typeof sessionId === "string") {
+            onSessionId?.(sessionId);
+          }
         }
 
         // 4. Add loading generation to session

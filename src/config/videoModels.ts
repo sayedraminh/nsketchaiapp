@@ -9,12 +9,9 @@ export type VideoModelId =
   // Veo 3.1 family
   | "vid-veo-3.1"
   | "vid-veo-3.1-fast"
-  | "veo3.1-transition"
-  | "veo3.1-fast-transition"
   // Kling family
   | "vid-kling-2.6-pro"
   | "vid-kling-2.5-pro"
-  | "kling-2.5-turbo-transition"
   | "kling-o1"
   | "kling-o1-transition"
   // Sora
@@ -31,12 +28,9 @@ export type VideoModelId =
   // Seedance family
   | "vid-seedance-lite"
   | "vid-seedance-pro"
-  | "seedance-pro-transition"
   | "kie-seedance-1.5-pro"
-  | "kie-seedance-1.5-pro-transition"
   // Pixverse
   | "pixverse-v5"
-  | "pixverse-v5-transition"
   // Lucy (Decart)
   | "vid-lucy-lite"
   | "vid-lucy-pro"
@@ -83,6 +77,7 @@ export interface VideoModelMeta {
   // Attachment requirements
   requiresAttachment: boolean; // Must have attachment to generate
   isTransition: boolean; // Requires start + end frames
+  supportsTransition?: boolean; // Supports transition mode with 2 frames
   supportsAttachment?: boolean; // Optional attachment support
   maxAttachments?: number;
   isTextOnly?: boolean; // No attachments allowed (e.g., Kandinsky)
@@ -122,8 +117,9 @@ export const VIDEO_MODELS: VideoModelMeta[] = [
     isNew: true,
     requiresAttachment: false,
     isTransition: false,
+    supportsTransition: true,
     supportsAttachment: true,
-    maxAttachments: 1,
+    maxAttachments: 2,
     // Text-only: ["16:9", "9:16", "1:1"], durations [4, 6, 8]
     allowedAspectRatios: ["16:9", "9:16", "1:1"],
     allowedDurations: [4, 6, 8],
@@ -147,8 +143,9 @@ export const VIDEO_MODELS: VideoModelMeta[] = [
     isNew: true,
     requiresAttachment: false,
     isTransition: false,
+    supportsTransition: true,
     supportsAttachment: true,
-    maxAttachments: 1,
+    maxAttachments: 2,
     // Same rules as vid-veo-3.1
     allowedAspectRatios: ["16:9", "9:16", "1:1"],
     allowedDurations: [4, 6, 8],
@@ -156,47 +153,6 @@ export const VIDEO_MODELS: VideoModelMeta[] = [
     showResolutionSelector: true,
     imageAttachedAspectRatios: ["16:9", "9:16"],
     imageAttachedDurations: [8],
-    supportsAudio: true,
-    defaultAudioOn: true,
-    baseCreditCost: 108,
-    isQueued: true,
-    provider: "fal",
-  },
-  {
-    id: "veo3.1-transition",
-    label: "Veo 3.1 Transition",
-    company: "Google",
-    description: "Create smooth transitions between two images with Veo quality",
-    logo: "googleg",
-    isNew: true,
-    requiresAttachment: true,
-    isTransition: true,
-    maxAttachments: 2,
-    // Transition: ["16:9", "9:16", "1:1"], duration [8] only
-    allowedAspectRatios: ["16:9", "9:16", "1:1"],
-    allowedDurations: [8],
-    allowedResolutions: ["720p", "1080p"],
-    showResolutionSelector: true,
-    supportsAudio: true,
-    defaultAudioOn: true,
-    baseCreditCost: 240,
-    isQueued: true,
-    provider: "fal",
-  },
-  {
-    id: "veo3.1-fast-transition",
-    label: "Veo 3.1 Fast Transition",
-    company: "Google",
-    description: "Fast transitions between two images",
-    logo: "googleg",
-    isNew: true,
-    requiresAttachment: true,
-    isTransition: true,
-    maxAttachments: 2,
-    allowedAspectRatios: ["16:9", "9:16", "1:1"],
-    allowedDurations: [8],
-    allowedResolutions: ["720p", "1080p"],
-    showResolutionSelector: true,
     supportsAudio: true,
     defaultAudioOn: true,
     baseCreditCost: 108,
@@ -233,29 +189,13 @@ export const VIDEO_MODELS: VideoModelMeta[] = [
     isNew: true,
     requiresAttachment: false,
     isTransition: false,
+    supportsTransition: true,
     supportsAttachment: true,
-    maxAttachments: 1,
+    maxAttachments: 2,
     // Always show ["16:9", "9:16", "1:1"] even with image
     allowedAspectRatios: ["16:9", "9:16", "1:1"],
     allowedDurations: [5, 10],
     supportsAudio: false, // No audio toggle
-    baseCreditCost: 40,
-    isQueued: true,
-    provider: "kie",
-  },
-  {
-    id: "kling-2.5-turbo-transition",
-    label: "Kling 2.5 Pro Transition",
-    company: "Kling",
-    description: "Smooth transitions between two images",
-    logo: "kling",
-    isNew: true,
-    requiresAttachment: true,
-    isTransition: true,
-    maxAttachments: 2,
-    allowedAspectRatios: ["16:9", "9:16", "1:1"],
-    allowedDurations: [5, 10],
-    supportsAudio: false,
     baseCreditCost: 40,
     isQueued: true,
     provider: "kie",
@@ -269,6 +209,7 @@ export const VIDEO_MODELS: VideoModelMeta[] = [
     isNew: true,
     requiresAttachment: true,
     isTransition: false,
+    supportsTransition: true,
     maxAttachments: 10, // Up to 10 refs (images + elements + video)
     allowedAspectRatios: ["16:9", "9:16", "1:1"],
     allowedDurations: [5, 10],
@@ -279,13 +220,15 @@ export const VIDEO_MODELS: VideoModelMeta[] = [
   },
   {
     id: "kling-o1-transition",
-    label: "Kling O1 Transition",
+    label: "Kling O1",
     company: "Kling",
     description: "Kling O1 with start frame (end frame optional)",
     logo: "kling",
     isNew: true,
-    requiresAttachment: true,
-    isTransition: true, // Requires startFrameImageUrl, endFrameImageUrl optional
+    requiresAttachment: false,
+    isTransition: false,
+    supportsTransition: true,
+    supportsAttachment: true,
     maxAttachments: 2,
     allowedAspectRatios: ["16:9", "9:16", "1:1"],
     allowedDurations: [5, 10],
@@ -455,27 +398,8 @@ export const VIDEO_MODELS: VideoModelMeta[] = [
     isNew: true,
     requiresAttachment: false,
     isTransition: false,
+    supportsTransition: true,
     supportsAttachment: true,
-    maxAttachments: 1,
-    allowedAspectRatios: ["16:9", "9:16", "1:1", "4:3", "3:4"],
-    allowedDurations: [5, 8, 12],
-    allowedResolutions: ["480p", "720p", "1080p"],
-    showResolutionSelector: true,
-    supportsAudio: false,
-    supportsCameraFixed: true,
-    baseCreditCost: 34,
-    isQueued: true,
-    provider: "fal",
-  },
-  {
-    id: "seedance-pro-transition",
-    label: "Seedance Pro Transition",
-    company: "ByteDance",
-    description: "Smooth transitions between two images",
-    logo: "bytedance-color",
-    isNew: true,
-    requiresAttachment: true,
-    isTransition: true,
     maxAttachments: 2,
     allowedAspectRatios: ["16:9", "9:16", "1:1", "4:3", "3:4"],
     allowedDurations: [5, 8, 12],
@@ -497,29 +421,10 @@ export const VIDEO_MODELS: VideoModelMeta[] = [
     isNew: true,
     requiresAttachment: false,
     isTransition: false,
+    supportsTransition: true,
     supportsAttachment: true,
-    maxAttachments: 1,
-    // Full AR set
-    allowedAspectRatios: ["16:9", "9:16", "1:1", "4:3", "3:4"],
-    allowedDurations: [4, 8, 12],
-    allowedResolutions: ["480p", "720p"],
-    showResolutionSelector: true,
-    supportsAudio: true, // Show generateAudio toggle
-    supportsCameraFixed: true,
-    baseCreditCost: 34,
-    isQueued: true,
-    provider: "kie",
-  },
-  {
-    id: "kie-seedance-1.5-pro-transition",
-    label: "Seedance 1.5 Pro Transition",
-    company: "ByteDance",
-    description: "KIE-based Seedance 2-frame transitions",
-    logo: "bytedance-color",
-    isNew: true,
-    requiresAttachment: true,
-    isTransition: true,
     maxAttachments: 2,
+    // Full AR set
     allowedAspectRatios: ["16:9", "9:16", "1:1", "4:3", "3:4"],
     allowedDurations: [4, 8, 12],
     allowedResolutions: ["480p", "720p"],
@@ -540,33 +445,15 @@ export const VIDEO_MODELS: VideoModelMeta[] = [
     isNew: false,
     requiresAttachment: false,
     isTransition: false,
+    supportsTransition: true,
     supportsAttachment: true,
-    maxAttachments: 1,
+    maxAttachments: 2,
     allowedAspectRatios: ["16:9", "4:3", "1:1", "3:4", "9:16"],
     // Duration depends on resolution: 1080p = [5] only, otherwise [5, 8]
     allowedDurations: [5, 8],
     allowedResolutions: ["360p", "540p", "720p", "1080p"],
     showResolutionSelector: true,
     supportsAudio: false, // No audio toggle
-    baseCreditCost: 16,
-    isQueued: true,
-    provider: "fal",
-  },
-  {
-    id: "pixverse-v5-transition",
-    label: "Pixverse v5 Transition",
-    company: "Pixverse",
-    description: "2-frame transitions",
-    logo: "pixverse",
-    isNew: false,
-    requiresAttachment: true,
-    isTransition: true,
-    maxAttachments: 2,
-    allowedAspectRatios: ["16:9", "4:3", "1:1", "3:4", "9:16"],
-    allowedDurations: [5, 8], // 1080p: [5] only
-    allowedResolutions: ["360p", "540p", "720p", "1080p"],
-    showResolutionSelector: true,
-    supportsAudio: false,
     baseCreditCost: 16,
     isQueued: true,
     provider: "fal",
@@ -788,7 +675,7 @@ export function getDynamicDurations(
   }
 
   // Pixverse: 1080p only allows [5]
-  if ((id === "pixverse-v5" || id === "pixverse-v5-transition") && resolution === "1080p") {
+  if (id === "pixverse-v5" && resolution === "1080p") {
     return [5];
   }
 
@@ -927,6 +814,12 @@ export function isKlingO1VideoModel(id: VideoModelId): boolean {
   return id === "kling-o1" || id === "kling-o1-transition";
 }
 
+// Check if model supports transition mode
+export function videoModelSupportsTransition(id: VideoModelId): boolean {
+  const model = getVideoModelById(id);
+  return model?.supportsTransition ?? false;
+}
+
 // Polling configuration for video (longer than images)
 export const VIDEO_POLLING_CONFIG = {
   initialDelay: 2000, // 2 seconds
@@ -957,7 +850,6 @@ export const VIDEO_MODEL_IDS = {
   // Kling family
   KLING_2_6_PRO: "vid-kling-2.6-pro" as VideoModelId,
   KLING_2_5_PRO: "vid-kling-2.5-pro" as VideoModelId,
-  KLING_2_5_TURBO_TRANSITION: "kling-2.5-turbo-transition" as VideoModelId,
   KLING_O1: "kling-o1" as VideoModelId,
   KLING_O1_TRANSITION: "kling-o1-transition" as VideoModelId,
   // Sora

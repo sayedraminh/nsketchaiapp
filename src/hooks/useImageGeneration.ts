@@ -10,7 +10,8 @@ import { useAuth } from "@clerk/clerk-expo";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { api } from "../../convex/_generated/api";
 import { Id } from "../../convex/_generated/dataModel";
-import { apiRequest, apiBaseUrl } from "../lib/api";
+import { apiRequest } from "../lib/api";
+import { withGenerationSlotLock } from "../lib/generationSlotQueue";
 import {
   ImageModelId,
   AspectRatio,
@@ -42,6 +43,7 @@ export interface GenerationRequest {
   resolution?: Resolution;
   quality?: Quality;
   sessionId?: string;
+  onSessionId?: (sessionId: string) => void;
 }
 
 // Generation status
@@ -233,6 +235,7 @@ export function useImageGeneration() {
         resolution,
         quality,
         sessionId: existingSessionId,
+        onSessionId,
       } = request;
 
       // Reset state
@@ -266,15 +269,32 @@ export function useImageGeneration() {
 
         // 1. Acquire generation slot
         setState((prev) => ({ ...prev, status: "acquiring_slot", progress: 10 }));
-        const slotResult = await acquireSlot({ type: "image" });
+        const slotResult = await withGenerationSlotLock(() =>
+          acquireSlot({ type: "image", prompt } as any)
+        );
         console.log("[useImageGeneration] acquireSlot result:", JSON.stringify(slotResult));
-        
+
         // Handle both response formats: { success, generationId } or direct Id
         if (!slotResult) {
           throw new Error("Failed to acquire generation slot - no result");
         }
-        
-        if (typeof slotResult === "string") {
+
+        // New response format: { ok: boolean, reason?: 'limit_reached', limit, active, generationId }
+        if (typeof slotResult === "object" && slotResult !== null && "ok" in slotResult) {
+          const result: any = slotResult;
+          if (result.ok === false) {
+            if (result.reason === "limit_reached") {
+              throw new Error(
+                `Concurrent generation limit reached (${result.active}/${result.limit}). Please wait or upgrade your plan.`
+              );
+            }
+            throw new Error(result.message || "Failed to acquire generation slot");
+          }
+          if (!result.generationId) {
+            throw new Error("Failed to acquire generation slot - missing generationId");
+          }
+          slotId = result.generationId as Id<"generations">;
+        } else if (typeof slotResult === "string") {
           // Direct ID string returned
           slotId = slotResult as Id<"generations">;
         } else if (typeof slotResult === "object") {
@@ -287,7 +307,7 @@ export function useImageGeneration() {
         } else {
           throw new Error(`Unexpected slot result type: ${typeof slotResult}`);
         }
-        
+
         console.log("[useImageGeneration] slotId:", slotId);
 
         // 2. Reserve credits
@@ -311,6 +331,9 @@ export function useImageGeneration() {
             type: "image",
           });
           sessionId = sessionResult;
+          if (typeof sessionId === "string") {
+            onSessionId?.(sessionId);
+          }
         }
 
         // 4. Add loading generation to session

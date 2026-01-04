@@ -15,6 +15,7 @@ import * as Clipboard from "expo-clipboard";
 import VideoModelSelectorSheet from "../components/VideoModelSelectorSheet";
 import SessionsDrawer, { SessionsDrawerRef } from "../components/SessionsDrawer";
 import AssetPickerSheet from "../components/AssetPickerSheet";
+import VideoDetailSheet from "../components/VideoDetailSheet";
 import { useRoute, RouteProp } from "@react-navigation/native";
 import { TabParamList } from "../navigation/TabNavigator";
 import { useQuery } from "convex/react";
@@ -37,6 +38,7 @@ import {
   videoModelSupportsFastMode,
   videoModelSupportsCameraFixed,
   videoModelSupportsWatermarkToggle,
+  videoModelSupportsTransition,
   isTransitionModel,
   isTextOnlyModel,
   isImageOnlyModel,
@@ -153,7 +155,7 @@ function parseAspectRatio(ratio?: string): number {
 }
 
 // Video card component that calculates actual aspect ratio from video dimensions
-function VideoCard({ uri, containerWidth }: { uri: string; containerWidth: number }) {
+function VideoCard({ uri, containerWidth, onDetailPress }: { uri: string; containerWidth: number; onDetailPress?: () => void }) {
   const [aspectRatio, setAspectRatio] = React.useState(16 / 9); // Default fallback
   const [isLoaded, setIsLoaded] = React.useState(false);
   const [isPlaying, setIsPlaying] = React.useState(false);
@@ -183,7 +185,7 @@ function VideoCard({ uri, containerWidth }: { uri: string; containerWidth: numbe
     setIsLoaded(true);
   };
 
-  const handlePress = async () => {
+  const handlePlayPress = async () => {
     if (!videoRef.current) return;
     if (isPlaying) {
       await videoRef.current.pauseAsync();
@@ -194,10 +196,7 @@ function VideoCard({ uri, containerWidth }: { uri: string; containerWidth: numbe
   };
 
   return (
-    <Pressable 
-      onPress={handlePress}
-      style={{ width: containerWidth, height, justifyContent: "center", alignItems: "center" }}
-    >
+    <View style={{ width: containerWidth, height, justifyContent: "center", alignItems: "center" }}>
       <Video
         ref={videoRef}
         source={{ uri }}
@@ -207,22 +206,84 @@ function VideoCard({ uri, containerWidth }: { uri: string; containerWidth: numbe
         onPlaybackStatusUpdate={handleLoad}
         onReadyForDisplay={handleReadyForDisplay}
       />
-      {!isPlaying && (
-        <View
-          style={{
-            position: "absolute",
-            width: 64,
-            height: 64,
-            borderRadius: 32,
-            backgroundColor: "rgba(0,0,0,0.6)",
-            justifyContent: "center",
-            alignItems: "center",
-          }}
-        >
-          <Ionicons name="play" size={32} color="#fff" />
-        </View>
+      
+      {/* Pressable areas around the video to open detail sheet */}
+      {onDetailPress && (
+        <>
+          {/* Top area */}
+          <Pressable
+            onPress={onDetailPress}
+            style={{
+              position: "absolute",
+              top: 0,
+              left: 0,
+              right: 0,
+              height: height * 0.3,
+            }}
+          />
+          {/* Bottom area */}
+          <Pressable
+            onPress={onDetailPress}
+            style={{
+              position: "absolute",
+              bottom: 0,
+              left: 0,
+              right: 0,
+              height: height * 0.3,
+            }}
+          />
+          {/* Left area */}
+          <Pressable
+            onPress={onDetailPress}
+            style={{
+              position: "absolute",
+              top: height * 0.3,
+              left: 0,
+              width: containerWidth * 0.3,
+              height: height * 0.4,
+            }}
+          />
+          {/* Right area */}
+          <Pressable
+            onPress={onDetailPress}
+            style={{
+              position: "absolute",
+              top: height * 0.3,
+              right: 0,
+              width: containerWidth * 0.3,
+              height: height * 0.4,
+            }}
+          />
+        </>
       )}
-    </Pressable>
+      
+      {/* Center play/pause button */}
+      <Pressable
+        onPress={handlePlayPress}
+        style={{
+          position: "absolute",
+          width: 80,
+          height: 80,
+          justifyContent: "center",
+          alignItems: "center",
+        }}
+      >
+        {!isPlaying && (
+          <View
+            style={{
+              width: 64,
+              height: 64,
+              borderRadius: 32,
+              backgroundColor: "rgba(0,0,0,0.6)",
+              justifyContent: "center",
+              alignItems: "center",
+            }}
+          >
+            <Ionicons name="play" size={32} color="#fff" />
+          </View>
+        )}
+      </Pressable>
+    </View>
   );
 }
 
@@ -252,21 +313,33 @@ export default function VideosScreen() {
   
   // Generation input state
   const [prompt, setPrompt] = useState("");
-  const [selectedModelId, setSelectedModelId] = useState<VideoModelId>(DEFAULT_VIDEO_SETTINGS.modelId);
-  const [selectedModelLabel, setSelectedModelLabel] = useState("Veo 3.1");
-  const [selectedAspectRatio, setSelectedAspectRatio] = useState<VideoAspectRatio>(DEFAULT_VIDEO_SETTINGS.aspectRatio);
-  const [selectedDuration, setSelectedDuration] = useState<VideoDuration>(DEFAULT_VIDEO_SETTINGS.duration);
-  const [selectedResolution, setSelectedResolution] = useState<VideoResolution>(DEFAULT_VIDEO_SETTINGS.resolution);
-  const [generateAudio, setGenerateAudio] = useState(DEFAULT_VIDEO_SETTINGS.generateAudio);
-  const [fastMode, setFastMode] = useState(DEFAULT_VIDEO_SETTINGS.fastMode);
+  const [selectedModelId, setSelectedModelId] = useState<VideoModelId>(settings.modelId);
+  const [selectedModelLabel, setSelectedModelLabel] = useState(() => {
+    const model = getVideoModelById(settings.modelId);
+    return model?.label || "Veo 3.1";
+  });
+  const [selectedAspectRatio, setSelectedAspectRatio] = useState<VideoAspectRatio>(settings.aspectRatio);
+  const [selectedDuration, setSelectedDuration] = useState<VideoDuration>(settings.duration);
+  const [selectedResolution, setSelectedResolution] = useState<VideoResolution>(settings.resolution);
+  const [generateAudio, setGenerateAudio] = useState(settings.generateAudio);
+  const [fastMode, setFastMode] = useState(settings.fastMode);
   const [attachments, setAttachments] = useState<SelectedImage[]>([]);
   const [isUploadingAttachments, setIsUploadingAttachments] = useState(false);
   const [savingGenerationId, setSavingGenerationId] = useState<string | null>(null);
+  const [assetPickerFrameIndex, setAssetPickerFrameIndex] = useState<number>(0);
+
+  const [pendingGenerationPreview, setPendingGenerationPreview] = useState<{
+    prompt: string;
+    modelLabel: string;
+    aspectRatio: VideoAspectRatio;
+  } | null>(null);
   
   // UI state
   const drawerRef = useRef<SessionsDrawerRef>(null);
   const modelSheetRef = useRef<BottomSheetModal>(null);
   const assetPickerSheetRef = useRef<BottomSheetModal>(null);
+  const videoDetailSheetRef = useRef<BottomSheetModal>(null);
+  const [selectedVideo, setSelectedVideo] = useState<any>(null);
   const translateY = useSharedValue(0);
   const scrollY = useSharedValue(0);
   const attachmentsProgress = useSharedValue(0);
@@ -298,6 +371,10 @@ export default function VideosScreen() {
   const supportsWatermarkToggle = uiConstraints.showWatermarkToggle;
   const isTransition = uiConstraints.isTransition;
   const canAttachImage = uiConstraints.canAttachImage;
+  
+  // Check if we should use transition mode (model supports it AND has 2 frames)
+  const currentAttachmentCount = attachments.filter((a) => a !== undefined && a !== null).length;
+  const useTransitionMode = videoModelSupportsTransition(selectedModelId) && currentAttachmentCount === 2;
   const showResolution = uiConstraints.showResolution;
   const showAspectRatio = uiConstraints.showAspectRatio;
   const allowedAspectRatios = uiConstraints.aspectRatios;
@@ -314,6 +391,20 @@ export default function VideosScreen() {
     duration: selectedDuration,
     fastMode,
   });
+
+  // Sync local state with hook settings when they load from AsyncStorage
+  useEffect(() => {
+    setSelectedModelId(settings.modelId);
+    const model = getVideoModelById(settings.modelId);
+    if (model) {
+      setSelectedModelLabel(model.label);
+    }
+    setSelectedAspectRatio(settings.aspectRatio);
+    setSelectedDuration(settings.duration);
+    setSelectedResolution(settings.resolution);
+    setGenerateAudio(settings.generateAudio);
+    setFastMode(settings.fastMode);
+  }, [settings]);
 
   // Update session when route params change
   useEffect(() => {
@@ -451,28 +542,44 @@ export default function VideosScreen() {
     setSelectedResolution(res);
   };
 
-  // Handle image source menu action
-  const handleImageSourceMenuAction = async (event: { nativeEvent: { event: string } }) => {
+  // Handle image source menu action for start frame
+  const handleStartFrameMenuAction = async (event: { nativeEvent: { event: string } }) => {
     const action = event.nativeEvent.event;
     if (action === "gallery") {
-      handleSelectFromGallery();
+      handleSelectFromGallery(0);
     } else if (action === "assets") {
       Keyboard.dismiss();
+      setAssetPickerFrameIndex(0);
+      assetPickerSheetRef.current?.present();
+    }
+  };
+
+  // Handle image source menu action for end frame
+  const handleEndFrameMenuAction = async (event: { nativeEvent: { event: string } }) => {
+    const action = event.nativeEvent.event;
+    if (action === "gallery") {
+      handleSelectFromGallery(1);
+    } else if (action === "assets") {
+      Keyboard.dismiss();
+      setAssetPickerFrameIndex(1);
       assetPickerSheetRef.current?.present();
     }
   };
 
   // Handle gallery selection
-  const handleSelectFromGallery = async () => {
+  const handleSelectFromGallery = async (frameIndex: number) => {
     try {
-      const maxSelection = isTransition ? 2 : 1;
       const images = await pickImages({
-        maxSelection,
-        allowsMultipleSelection: isTransition,
+        maxSelection: 1,
+        allowsMultipleSelection: false,
       });
 
       if (images.length > 0) {
-        setAttachments(images.slice(0, maxSelection));
+        setAttachments((prev) => {
+          const newAttachments = [...prev];
+          newAttachments[frameIndex] = images[0];
+          return newAttachments;
+        });
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : "Failed to pick images";
@@ -483,17 +590,20 @@ export default function VideosScreen() {
   // Handle asset selection
   const handleSelectFromAssets = (selectedImages: { url: string; uri: string }[]) => {
     if (selectedImages.length === 0) return;
-    const maxSelection = isTransition ? 2 : 1;
 
-    const newImages: SelectedImage[] = selectedImages.map((img) => ({
-      uri: img.url,
-      url: img.url,
+    const newImage: SelectedImage = {
+      uri: selectedImages[0].url,
+      url: selectedImages[0].url,
       width: 0,
       height: 0,
       isFromAssets: true,
-    } as SelectedImage & { url?: string; isFromAssets?: boolean }));
+    } as SelectedImage & { url?: string; isFromAssets?: boolean };
 
-    setAttachments(newImages.slice(0, maxSelection));
+    setAttachments((prev) => {
+      const newAttachments = [...prev];
+      newAttachments[assetPickerFrameIndex] = newImage;
+      return newAttachments;
+    });
   };
 
   // Remove attachment
@@ -501,19 +611,43 @@ export default function VideosScreen() {
     setAttachments((prev) => prev.filter((_, i) => i !== index));
   };
 
+  // Handle video click to show detail sheet
+  const handleVideoClick = useCallback((gen: any) => {
+    const videos = gen.videos || [];
+    const videoUrl = typeof videos[0] === 'string' ? videos[0] : videos[0]?.url;
+    
+    setSelectedVideo({
+      ...gen,
+      videoUrl,
+      thumbnailUrl: gen.thumbnailUrl,
+    });
+    videoDetailSheetRef.current?.present();
+  }, []);
+
+  // Handle video delete
+  const handleDeleteVideo = useCallback((video: any) => {
+    // TODO: Implement delete video mutation
+    console.log("Delete video:", video._id);
+  }, []);
+
   // Handle generation
   const handleGenerate = async () => {
-    if (!prompt.trim()) {
+    const promptSnapshot = prompt.trim();
+
+    if (!promptSnapshot) {
       Alert.alert("Error", "Please enter a prompt");
       return;
     }
 
-    if (requiresAttachment && attachments.length === 0) {
+    // Count valid attachments (filter out undefined/null)
+    const validAttachments = attachments.filter((a) => a !== undefined && a !== null);
+
+    if (requiresAttachment && validAttachments.length === 0) {
       Alert.alert("Error", `${currentModel?.label} requires at least one image`);
       return;
     }
 
-    if (isTransition && attachments.length !== 2) {
+    if (isTransition && validAttachments.length !== 2) {
       Alert.alert("Error", `${currentModel?.label} requires exactly 2 images (start and end frames)`);
       return;
     }
@@ -525,13 +659,22 @@ export default function VideosScreen() {
 
     Keyboard.dismiss();
 
+    // Snapshot what the user is generating so the in-flight skeleton doesn't change
+    // when the prompt bar is edited mid-generation.
+    setPendingGenerationPreview({
+      prompt: promptSnapshot,
+      modelLabel: selectedModelLabel,
+      aspectRatio: selectedAspectRatio,
+    });
+
     try {
       let attachmentImageUrl: string | undefined;
       let startFrameImageUrl: string | undefined;
       let endFrameImageUrl: string | undefined;
 
       // Upload attachments if any
-      if (attachments.length > 0) {
+      const validAttachments = attachments.filter((a) => a !== undefined && a !== null);
+      if (validAttachments.length > 0) {
         setIsUploadingAttachments(true);
         const token = await getToken();
         if (!token) {
@@ -539,8 +682,8 @@ export default function VideosScreen() {
         }
 
         // Separate asset images from gallery images
-        const assetImages = attachments.filter((a) => a.isFromAssets && a.url);
-        const galleryImages = attachments.filter((a) => !a.isFromAssets || !a.url);
+        const assetImages = validAttachments.filter((a) => a.isFromAssets && a.url);
+        const galleryImages = validAttachments.filter((a) => !a.isFromAssets || !a.url);
 
         // Upload gallery images
         let uploadedUrls: string[] = [];
@@ -553,7 +696,7 @@ export default function VideosScreen() {
         }
 
         // Build attachment URLs in order
-        const allUrls: string[] = attachments.map((a) => {
+        const allUrls: string[] = validAttachments.map((a) => {
           if (a.isFromAssets && a.url) {
             return a.url;
           }
@@ -561,11 +704,17 @@ export default function VideosScreen() {
           return uploadedUrls[galleryIndex];
         });
 
-        if (isTransition && allUrls.length === 2) {
+        // Use transition mode if model supports it and has 2 frames
+        if (useTransitionMode && allUrls.length === 2) {
           startFrameImageUrl = allUrls[0];
           endFrameImageUrl = allUrls[1];
         } else if (allUrls.length > 0) {
-          attachmentImageUrl = allUrls[0];
+          // For kling-o1-transition, always use startFrameImageUrl (backend requires it)
+          if (selectedModelId === "kling-o1-transition") {
+            startFrameImageUrl = allUrls[0];
+          } else {
+            attachmentImageUrl = allUrls[0];
+          }
         }
 
         setIsUploadingAttachments(false);
@@ -573,7 +722,7 @@ export default function VideosScreen() {
 
       // Start generation
       const result = await generate({
-        prompt: prompt.trim(),
+        prompt: promptSnapshot,
         modelId: selectedModelId,
         aspectRatio: selectedAspectRatio,
         duration: selectedDuration,
@@ -584,6 +733,9 @@ export default function VideosScreen() {
         startFrameImageUrl,
         endFrameImageUrl,
         sessionId: currentSessionId,
+        onSessionId: (sessionId) => {
+          setCurrentSessionId((prev) => prev ?? sessionId);
+        },
       });
 
       if (result.success) {
@@ -591,27 +743,27 @@ export default function VideosScreen() {
         if (result.sessionId && !currentSessionId) {
           setCurrentSessionId(result.sessionId);
         }
-        // Clear prompt on success
-        setPrompt("");
-        setAttachments([]);
+        setPendingGenerationPreview(null);
       } else {
+        setPendingGenerationPreview(null);
         Alert.alert("Generation Failed", result.error || "Unknown error");
       }
     } catch (error) {
       setIsUploadingAttachments(false);
+      setPendingGenerationPreview(null);
       const message = error instanceof Error ? error.message : "Generation failed";
       Alert.alert("Error", message);
     }
   };
 
   // Check if generate button should be enabled
+  const validAttachmentCount = attachments.filter((a) => a !== undefined && a !== null).length;
   const canGenerate =
     prompt.trim().length > 0 &&
-    !isGenerating &&
     !isUploadingAttachments &&
     credits >= estimatedCost &&
-    (!requiresAttachment || attachments.length > 0) &&
-    (!isTransition || attachments.length === 2);
+    (!requiresAttachment || validAttachmentCount > 0) &&
+    (!isTransition || validAttachmentCount === 2);
 
   return (
     <SessionsDrawer ref={drawerRef} currentScreen="video">
@@ -700,23 +852,25 @@ export default function VideosScreen() {
           onScroll={scrollHandler}
           scrollEventThrottle={16}
         >
-          {isLoadingGenerations ? (
+          {isLoadingGenerations && !pendingGenerationPreview ? (
             <View className="items-center justify-center py-20">
               <ActivityIndicator size="large" color="#a855f7" />
               <Text className="text-gray-500 text-sm mt-3">Loading...</Text>
             </View>
-          ) : isGenerating && (!generations || generations.length === 0) ? (
+          ) : (pendingGenerationPreview || isGenerating) && (!generations || generations.length === 0) ? (
             // Show skeleton when generating in a new session
             <View>
               <View className="bg-neutral-800 rounded-3xl px-4 py-3 mb-2 self-end" style={{ maxWidth: '90%' }}>
                 <Text className="text-white text-base text-center" numberOfLines={7}>
-                  {prompt}
+                  {pendingGenerationPreview?.prompt ?? prompt}
                 </Text>
               </View>
               <View className="flex-row items-center justify-end mb-3">
                 <View className="flex-row items-center bg-neutral-800 rounded-full px-3 py-1.5">
                   <Ionicons name="videocam-outline" size={14} color="#fff" />
-                  <Text className="text-white text-xs ml-1.5">{selectedModelLabel}</Text>
+                  <Text className="text-white text-xs ml-1.5">
+                    {pendingGenerationPreview?.modelLabel ?? selectedModelLabel}
+                  </Text>
                 </View>
               </View>
               <View className="flex-row items-center mb-3">
@@ -834,6 +988,7 @@ export default function VideosScreen() {
                           <VideoCard
                             uri={typeof videos[0] === 'string' ? videos[0] : videos[0].url}
                             containerWidth={VIDEO_WIDTH}
+                            onDetailPress={() => handleVideoClick(gen)}
                           />
                         </View>
                       )}
@@ -931,13 +1086,11 @@ export default function VideosScreen() {
           {canAttachImage && (
             <View 
               style={{ position: 'absolute', top: -78, left: 15, zIndex: -1, transform: [{ rotate: '-5deg' }] }}
-              {...(Platform.OS === 'ios' ? { shouldRasterizeIOS: true } : {})}
-              {...(Platform.OS === 'android' ? { renderToHardwareTextureAndroid: true } : {})}
             >
-              {attachments.length === 0 ? (
+              {!attachments[0] ? (
                 <MenuView
                   title="Select the first frame"
-                  onPressAction={handleImageSourceMenuAction}
+                  onPressAction={handleStartFrameMenuAction}
                   actions={[
                     { id: "gallery", title: "Phone Gallery", image: "photo.on.rectangle", imageColor: "#ffffff" },
                     { id: "assets", title: "Assets", image: "folder", imageColor: "#ffffff" },
@@ -954,8 +1107,8 @@ export default function VideosScreen() {
                         }}
                       >
                         <View 
-                          className="items-center justify-center px-1.5 py-6"
-                          style={{ backgroundColor: 'rgba(30, 30, 30, 0.7)' }}
+                          className="items-center justify-center"
+                          style={{ backgroundColor: 'rgba(30, 30, 30, 0.7)', width: 64, height: 86, paddingHorizontal: 6 }}
                         >
                           <Ionicons name="add" size={24} color="#9ca3af" />
                           <Text className="text-gray-400 mt-1.5 text-center" style={{ fontSize: 10 }}>Start frame</Text>
@@ -991,7 +1144,70 @@ export default function VideosScreen() {
               )}
             </View>
           )}
-          <View>
+
+          {/* End Frame Button - positioned behind start frame (for transition models) */}
+          {videoModelSupportsTransition(selectedModelId) && (
+            <View 
+              style={{ position: 'absolute', top: -79, left: 79, zIndex: -2, transform: [{ rotate: '1deg' }] }}
+            >
+              {!attachments[1] ? (
+                <MenuView
+                  title="Select the end frame"
+                  onPressAction={handleEndFrameMenuAction}
+                  actions={[
+                    { id: "gallery", title: "Phone Gallery", image: "photo.on.rectangle", imageColor: "#ffffff" },
+                    { id: "assets", title: "Assets", image: "folder", imageColor: "#ffffff" },
+                  ]}
+                >
+                  <Pressable className="active:opacity-70">
+                    <View>
+                      <BlurView
+                        intensity={80}
+                        tint="dark"
+                        style={{
+                          borderRadius: 12,
+                          overflow: 'hidden',
+                        }}
+                      >
+                        <View 
+                          className="items-center justify-center"
+                          style={{ backgroundColor: 'rgba(30, 30, 30, 0.7)', width: 64, height: 86, paddingHorizontal: 6 }}
+                        >
+                          <Ionicons name="add" size={24} color="#9ca3af" />
+                          <Text className="text-gray-400 mt-1.5 text-center" style={{ fontSize: 10 }}>End frame</Text>
+                        </View>
+                      </BlurView>
+                      <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, borderRadius: 12, borderWidth: 0.5, borderColor: 'rgba(255, 255, 255, 0.2)', zIndex: 10 }} />
+                    </View>
+                  </Pressable>
+                </MenuView>
+              ) : (
+                <View 
+                  style={{ 
+                    padding: 2.5,
+                    backgroundColor: '#ffffff',
+                    borderRadius: 14,
+                  }}
+                  {...(Platform.OS === 'ios' ? { shouldRasterizeIOS: true } : {})}
+                  {...(Platform.OS === 'android' ? { renderToHardwareTextureAndroid: true } : {})}
+                >
+                  <Image
+                    source={attachments[1].uri}
+                    style={{ width: 60, height: 82, borderRadius: 11 }}
+                    contentFit="cover"
+                  />
+                  <Pressable
+                    onPress={() => removeAttachment(1)}
+                    className="absolute rounded-full w-5 h-5 items-center justify-center"
+                    style={{ backgroundColor: "rgba(80,80,80,0.9)", top: -6, right: -6, zIndex: 20, borderWidth: 2, borderColor: '#ffffff' }}
+                  >
+                    <Ionicons name="close" size={12} color="#fff" />
+                  </Pressable>
+                </View>
+              )}
+            </View>
+          )}
+          <View style={{ zIndex: 10 }}>
           <BlurView 
             intensity={80} 
             tint="dark"
@@ -1085,10 +1301,25 @@ export default function VideosScreen() {
                   <Pressable
                     onPress={() => setGenerateAudio(!generateAudio)}
                     className="flex-row items-center rounded-full px-2.5 mr-2 active:opacity-70"
-                    style={{ backgroundColor: generateAudio ? "#7c3aed" : "#3a3a3a", height: 28 }}
+                    style={{ 
+                      backgroundColor: generateAudio ? "#ffffff" : "#3a3a3a",
+                      height: 28
+                    }}
                   >
-                    <Ionicons name="musical-notes-outline" size={14} color="#fff" />
-                    <Text className="text-white text-xs ml-1.5">Audio</Text>
+                    <Ionicons 
+                      name={generateAudio ? "volume-high" : "volume-mute"} 
+                      size={14} 
+                      color={generateAudio ? "#000000" : "#ffffff"} 
+                    />
+                    <Text 
+                      className="text-xs ml-1.5"
+                      style={{ 
+                        color: generateAudio ? "#000000" : "#ffffff",
+                        fontWeight: generateAudio ? "600" : "400"
+                      }}
+                    >
+                      {generateAudio ? "Audio On" : "Audio Off"}
+                    </Text>
                   </Pressable>
                 )}
               </ScrollView>
@@ -1097,16 +1328,21 @@ export default function VideosScreen() {
                 <Pressable
                   onPress={handleGenerate}
                   disabled={!canGenerate}
-                  className="rounded-full p-2 active:opacity-70"
+                  className="active:opacity-70"
                   style={{ 
-                    backgroundColor: canGenerate ? "#a855f7" : "#4a4a4a",
-                    opacity: canGenerate ? 1 : 0.6,
+                    opacity: canGenerate ? 1 : 0.5,
+                    borderRadius: 22,
+                    overflow: 'hidden',
                   }}
                 >
-                  {isGenerating || isUploadingAttachments ? (
-                    <ActivityIndicator size="small" color="#fff" />
+                  {isUploadingAttachments ? (
+                    <ActivityIndicator size="small" color="#a855f7" />
                   ) : (
-                    <Ionicons name="sparkles" size={20} color="#fff" />
+                    <Image
+                      source={require("../../assets/genbutton.png")}
+                      style={{ width: 36, height: 36 }}
+                      contentFit="contain"
+                    />
                   )}
                 </Pressable>
               </View>
@@ -1126,40 +1362,61 @@ export default function VideosScreen() {
         onSelectModel={(modelId, modelLabel) => {
           setSelectedModelId(modelId);
           setSelectedModelLabel(modelLabel);
+          
+          const model = getVideoModelById(modelId);
+          
           // Reset aspect ratio if not supported by new model
           const newAllowedRatios = getVideoModelAspectRatios(modelId);
-          if (!newAllowedRatios.includes(selectedAspectRatio)) {
-            setSelectedAspectRatio(newAllowedRatios[0]);
-          }
+          const newAspectRatio = !newAllowedRatios.includes(selectedAspectRatio) 
+            ? newAllowedRatios[0] 
+            : selectedAspectRatio;
+          setSelectedAspectRatio(newAspectRatio);
+          
           // Reset duration if not supported
           const newAllowedDurations = getVideoModelDurations(modelId);
-          if (!newAllowedDurations.includes(selectedDuration)) {
-            setSelectedDuration(newAllowedDurations[0]);
-          }
+          const newDuration = !newAllowedDurations.includes(selectedDuration)
+            ? newAllowedDurations[0]
+            : selectedDuration;
+          setSelectedDuration(newDuration);
+          
           // Reset resolution if needed
           const newAllowedResolutions = getVideoModelResolutions(modelId);
-          if (!newAllowedResolutions.includes(selectedResolution)) {
-            setSelectedResolution(newAllowedResolutions[0]);
-          }
-          // Clear attachments when switching models
-          setAttachments([]);
+          const newResolution = !newAllowedResolutions.includes(selectedResolution)
+            ? newAllowedResolutions[0]
+            : selectedResolution;
+          setSelectedResolution(newResolution);
+          
           // Reset audio toggle
-          const model = getVideoModelById(modelId);
-          if (model?.supportsAudio && model.defaultAudioOn) {
-            setGenerateAudio(true);
-          } else {
-            setGenerateAudio(false);
-          }
+          const newGenerateAudio = !!(model?.supportsAudio && model.defaultAudioOn);
+          setGenerateAudio(newGenerateAudio);
+          
+          // Persist all settings to AsyncStorage
+          updateSettings({
+            modelId,
+            aspectRatio: newAspectRatio,
+            duration: newDuration,
+            resolution: newResolution,
+            generateAudio: newGenerateAudio,
+            fastMode,
+          });
         }} 
       />
 
       {/* Asset Picker Sheet */}
       <AssetPickerSheet
         ref={assetPickerSheetRef}
-        maxSelection={isTransition ? 2 : 1}
-        allowMultiple={isTransition}
+        maxSelection={1}
+        allowMultiple={false}
         onSelectImages={handleSelectFromAssets}
         onClose={() => {}}
+      />
+
+      {/* Video Detail Sheet */}
+      <VideoDetailSheet
+        ref={videoDetailSheetRef}
+        video={selectedVideo}
+        onClose={() => setSelectedVideo(null)}
+        onDelete={handleDeleteVideo}
       />
       </View>
     </SessionsDrawer>
